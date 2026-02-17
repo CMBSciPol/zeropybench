@@ -1,5 +1,4 @@
 import contextlib
-import functools
 import inspect
 import linecache
 import statistics
@@ -8,6 +7,7 @@ import textwrap
 import time
 import timeit
 from collections.abc import Callable, Iterator, Sequence
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal
 
@@ -16,6 +16,8 @@ import matplotlib.pyplot as mp
 import polars as pl
 import polars.selectors as cs
 from matplotlib.axes import Axes
+
+from ._jax import CodeASTParser
 
 __all__ = ['Benchmark']
 
@@ -117,14 +119,49 @@ class Benchmark:
             tbl_hide_column_data_types=True,
             tbl_hide_dataframe_shape=True,
         ):
-            return str(self.as_dataframe())
+            return str(self.to_dataframe())
 
     @contextlib.contextmanager
     def __call__(self, **keywords: ValidBenchmarkType) -> Iterator[None]:
         start_time = time.perf_counter()
         yield
-        first_time = time.perf_counter() - start_time
+        first_time = self._to_units(time.perf_counter() - start_time)
+        code, f_locals, f_globals = self._get_execution_context()
+        is_jax = self._is_jax_context(f_locals)
+        if is_jax:
+            parser = CodeASTParser.from_code(code)
+            code, globals = parser.transform_jax_code(f_locals, f_globals)
+            compilation_time = self._run_once(code, globals)
+            is_jax_keywords = {
+                'first_execution_time': first_time,
+                'compilation_time': compilation_time,
+            }
+
+        else:
+            is_jax_keywords = {}
+            globals = f_locals | f_globals
+        execution_times, number = self._run_many_times(code, first_time, globals)
+        median_repeat_time, stdev_time = self._get_statistics(execution_times)
+        stdev_time, stdev_time_units = self._to_stdev_units(stdev_time)
+        message = ', '.join(f'{k}={v}' for k, v in keywords.items() if k != 'first_execution_time')
+        print(
+            f'{message}: {median_repeat_time:.3f} {self.time_units} ± {stdev_time:.2f} '
+            f'{stdev_time_units} (median ± std. dev. of {self.repeat} runs, {number} loops each)'
+        )
+
+        record: dict[str, ValidBenchmarkType] = {
+            **keywords,
+            **is_jax_keywords,
+            'median_execution_time': median_repeat_time,
+            'execution_times': sorted(execution_times),
+        }
+        self._report.append(record)
+
+    def _get_execution_context(self) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        """Return the code as string, and the locals and globals as dicts."""
         cf = inspect.currentframe()
+        assert cf is not None
+        cf = cf.f_back
         assert cf is not None
         cf = cf.f_back
         assert cf is not None
@@ -132,31 +169,7 @@ class Benchmark:
         assert cf is not None
         filename = cf.f_code.co_filename
         code = self._get_code(filename, cf.f_lineno)
-        # func = self._get_func(code, cf.f_globals, cf.f_locals)
-        # if self._is_jax_context(cf.f_locals):
-        #    # store the compilation time
-        #    keywords = {
-        #        **keywords,
-        #        'first_execution_time': first_time * TIME_UNITS_MULTIPLIER[self.time_units],
-        #    }
-        #    first_time = self._run_once(func)
-        combined_globals = cf.f_globals | cf.f_locals
-        execution_times, number = self._run_many_times(code, first_time, combined_globals)
-        min_repeat_time, stdev = self._get_statistics(execution_times)
-        stdev_time_units = STDEV_TIME_UNITS[self.time_units]
-        stdev *= TIME_UNITS_MULTIPLIER[stdev_time_units] / TIME_UNITS_MULTIPLIER[self.time_units]
-        message = ', '.join(f'{k}={v}' for k, v in keywords.items() if k != 'first_execution_time')
-        print(
-            f'{message}: {min_repeat_time:.3f} {self.time_units} ± {stdev:.2f} {stdev_time_units} '
-            f'(median ± std. dev. of {self.repeat} runs, {number} loops each)'
-        )
-
-        record: dict[str, ValidBenchmarkType] = {
-            **keywords,
-            #            'Execution time': min_repeat_time,
-            'execution_times': execution_times,
-        }
-        self._report.append(record)
+        return code, cf.f_locals, cf.f_globals
 
     def _get_code(self, filename: str, line_number: int) -> str:
         """Return the content inside the with statement context as text."""
@@ -183,45 +196,34 @@ class Benchmark:
             self._cache[filename] = text
         return text.splitlines()
 
-    def _get_func(
-        self, code: str, f_globals: dict[str, Any], f_locals: dict[str, Any]
-    ) -> Callable[[], None]:
-        func: Callable[[], None]
-        try:
-            compiled = compile(code, '<benchmark>', 'eval')
-            do_exec = False
-        except SyntaxError:
-            compiled = compile(code, '<benchmark>', 'exec')
-            do_exec = True
+    def _is_jax_context(self, locals: dict[str, Any]) -> bool:
+        """Returns true if a variable in the with context is a JAX array."""
+        jax = sys.modules.get('jax')
+        if jax is None:
+            return False
+        jaxlib = sys.modules.get('jaxlib')
+        return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
-        if do_exec:
-            func = functools.partial(exec, compiled, f_globals, f_locals)
-        elif self._is_jax_context(f_locals):
-            import jax
-
-            def func() -> None:
-                result = eval(compiled, f_globals, f_locals)
-                jax.block_until_ready(result)
-
-        else:
-            func = functools.partial(eval, compiled, f_globals, f_locals)
-        return func
-
-    def _run_once(self, func: Callable[[], object]) -> float:
+    def _run_once(self, code: str, globals: dict[str, Any]) -> float:
         """Executes once a function and returns the elapsed time in the benchmark units."""
-        start_time = time.perf_counter()
-        func()
-        return (time.perf_counter() - start_time) * TIME_UNITS_MULTIPLIER[self.time_units]
+        timer = timeit.Timer(code, globals=globals)
+        return self._to_units(timer.timeit(number=1))
 
     def _run_many_times(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
     ) -> tuple[list[float], int]:
-        """Returns execution time in the benchmark unit."""
+        """Returns execution time in the benchmark units.
+
+        Args:
+            func: the function or code snippet to be executed.
+            first_time: The execution time in benchmark units of the code that was run in the
+                context manager.
+            globals: The combined locals and globals of the code.
+        """
         number, time_taken = self._autorange(func, first_time, globals)
         timer = timeit.Timer(func, globals=globals)
         runs = [time_taken / number] + [
-            _ * TIME_UNITS_MULTIPLIER[self.time_units] / number
-            for _ in timer.repeat(repeat=self.repeat - 1, number=number)
+            self._to_units(_) / number for _ in timer.repeat(repeat=self.repeat - 1, number=number)
         ]
         return runs, number
 
@@ -232,11 +234,11 @@ class Benchmark:
 
         Calls the timeit method with increasing numbers from the sequence
         1, 2, 5, 10, 20, 50, ... until the time taken is at least min_duration_of_repeat
-        Returns (number, time_taken).
+        Returns (number, time_taken_in_benchmark_units).
 
         Adapted from the timeit module.
         """
-        if first_time >= self.min_duration_of_repeat * TIME_UNITS_MULTIPLIER[self.time_units]:
+        if first_time >= self._to_units(self.min_duration_of_repeat):
             return 1, first_time
 
         timer = timeit.Timer(func, globals=globals)
@@ -249,7 +251,7 @@ class Benchmark:
                 number = i * j
                 time_taken = timer.timeit(number)
                 if time_taken >= self.min_duration_of_repeat:
-                    return number, time_taken * TIME_UNITS_MULTIPLIER[self.time_units]
+                    return number, self._to_units(time_taken)
             i *= 10
 
     def _get_statistics(self, execution_times: list[float]) -> tuple[float, float]:
@@ -261,16 +263,23 @@ class Benchmark:
             stdev = 1.4826 * mad
         return median, stdev
 
-    def _is_jax_context(self, f_locals: dict[str, Any]) -> bool:
-        """Returns true if a variable in the with context is a JAX array."""
-        jax = sys.modules.get('jax')
-        if jax is None:
-            return False
-        return any(isinstance(_, jax.Array) for _ in f_locals.values())
+    def _to_units(self, value_s: float) -> float:
+        return value_s * TIME_UNITS_MULTIPLIER[self.time_units]
 
-    def as_dataframe(self) -> pl.DataFrame:
+    def _to_stdev_units(self, value: float) -> tuple[float, str]:
+        stdev_units = STDEV_TIME_UNITS[self.time_units]
+        return (
+            value * TIME_UNITS_MULTIPLIER[stdev_units] / TIME_UNITS_MULTIPLIER[self.time_units],
+            stdev_units,
+        )
+
+    def to_dataframe(self) -> pl.DataFrame:
         """Returns the benchmark as a Polars dataframe."""
         return pl.DataFrame(self._report)
+
+    def to_dicts(self) -> list[dict[str, Any]]:
+        """Returns the benchmark as a list of dicts."""
+        return deepcopy(self._report)
 
     def write_csv(self, path: Path | str) -> None:
         """Writes the benchmark report as CSV.
@@ -278,7 +287,7 @@ class Benchmark:
         Args:
             path: The path of the CSV file.
         """
-        self.as_dataframe().with_columns(
+        self.to_dataframe().with_columns(
             execution_times='['
             + pl.col('execution_times').cast(pl.List(pl.String)).list.join(', ')
             + ']'
@@ -290,7 +299,7 @@ class Benchmark:
         Args:
             path: The path of the Parquet file.
         """
-        self.as_dataframe().write_parquet(path)
+        self.to_dataframe().write_parquet(path)
 
     def write_markdown(self, path: Path | str) -> None:
         """Writes the benchmark report as MarkDown table.
@@ -305,7 +314,7 @@ class Benchmark:
             tbl_hide_column_data_types=True,
             tbl_hide_dataframe_shape=True,
         ):
-            path.write_text(str(self.as_dataframe()))
+            path.write_text(str(self.to_dataframe()))
 
     def plot(
         self,
@@ -354,7 +363,7 @@ class Benchmark:
         **subplots_keywords: Any,
     ) -> matplotlib.figure.Figure:
 
-        df = self.as_dataframe()
+        df = self.to_dataframe()
         if x is None:
             x = self._infer_default_x_axis_plot(df)
         elif isinstance(x, str):
