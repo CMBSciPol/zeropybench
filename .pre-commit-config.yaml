@@ -1,0 +1,66 @@
+repos:
+- repo: https://github.com/asottile/pyupgrade
+  rev: "v3.21.2"
+  hooks:
+  - id: pyupgrade
+    args: ["--py310-plus"]
+
+- repo: https://github.com/hadialqattan/pycln
+  rev: "v2.6.0"
+  hooks:
+  - id: pycln
+    args:
+    - --all
+
+- repo: https://github.com/PyCQA/isort
+  rev: '7.0.0'
+  hooks:
+  - id: isort
+    args:
+    - --profile=black
+    - --line-length=100
+
+- repo: https://github.com/psf/black
+  rev: '26.1.0'
+  hooks:
+  - id: black
+    args:
+    - --skip-string-normalization
+    - --line-length=100
+
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: 'v6.0.0'
+  hooks:
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: check-yaml
+  - id: double-quote-string-fixer
+  - id: check-merge-conflict
+  - id: debug-statements
+
+- repo: https://github.com/pycqa/flake8
+  rev: '7.3.0'
+  hooks:
+  - id: flake8
+    name: flake 8 (src)
+    args:
+    - --max-line-length=100
+    # E203 Whitespace before ':' (black incompatibility)
+    # E731 Do not assign a lambda expression, use a def
+    - --extend-ignore=E203,E731
+    files: ^.*\.py
+
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: 'v1.19.1'
+  hooks:
+  - id: mypy
+    additional_dependencies:
+    - jax
+    - polars
+    - matplotlib
+    args:
+    - --strict
+    - --show-error-codes
+    - --enable-error-code=ignore-without-code
+    - --allow-untyped-calls
+    files: ^zeropybench\.py
