@@ -6,11 +6,22 @@ build-backend = "hatchling.build"
 name = "zeropybench"
 dynamic = ['version']
 description = "A multidimensional benchmarking library with minimal overhead"
-readme = "README.md"
-requires-python = ">=3.10"
-license = "MIT"
 authors = [
     { name = "Pierre Chanial" }
+]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    'Intended Audience :: Developers',
+    'Intended Audience :: Education',
+    'Intended Audience :: Science/Research',
+    'Topic :: Software Development :: Debuggers',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
 ]
 dependencies = [
     "matplotlib",
