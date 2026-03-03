@@ -22,25 +22,33 @@ jobs:
     - uses: j178/prek-action@v1
 
   test:
-    name: Run tests on Python ${{ matrix.python-version }}
+    name: Run tests on Python ${{ matrix.python.version }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        python:
+        - version: '3.10'
+          jax: '>=0.4,<0.5'
+        - version: '3.11'
+          jax: '>=0.4,<0.5'
+        - version: '3.12'
+          jax: '>=0.5,<0.6'
+        - version: '3.13'
+          jax: '>=0.5,<0.6'
+        - version: '3.14'
+          jax: '>=0.8'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python.version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python.version }}
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
 
@@ -51,8 +59,15 @@ jobs:
         run: |
           uv sync --locked --no-install-project
           uv pip install dist/zeropybench-*.whl
+          uv pip install "jax${{ matrix.python.jax }}"
 
-      - name: Run tests
-        run: |
-          source .venv/bin/activate
-          pytest -v
+      - name: Run unit tests
+        run: uv run pytest -v --cov=zeropybench --cov-report=xml tests
+
+      - name: Upload coverage to Codecov
+        if: matrix.python.version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          fail_ci_if_error: false

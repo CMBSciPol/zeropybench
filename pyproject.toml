@@ -34,6 +34,7 @@ dev = [
     'jax>=0.6; python_version=="3.10"',
     'jax>=0.9; python_version>="3.11"',
     'pytest>=9.0',
+    "pytest-cov>=7.0.0",
     'pytest-notebook>=0.10',
 ]
 docs = [
@@ -46,6 +47,10 @@ docs = [
     'numpy>=1.24.0',
     'pillow>=9.0.0',
 ]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
 
 [tool.hatch.version]
 source = 'vcs'
