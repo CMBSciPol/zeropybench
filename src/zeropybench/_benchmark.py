@@ -131,10 +131,11 @@ class Benchmark:
         if is_jax:
             parser = CodeASTParser.from_code(code)
             code, globals = parser.transform_jax_code(f_locals, f_globals)
-            compilation_time = self._run_once(code, globals)
+            hlo, compilation_time = self._compile_jax(globals)
             is_jax_keywords = {
                 'first_execution_time': first_time,
                 'compilation_time': compilation_time,
+                'hlo': hlo,
             }
 
         else:
@@ -203,6 +204,20 @@ class Benchmark:
             return False
         jaxlib = sys.modules.get('jaxlib')
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
+
+    def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float]:
+        """Compile the JAX function and return the HLO and compilation time."""
+        bench_func = globals['__bench_func']
+        param_names = list(inspect.signature(bench_func).parameters.keys())
+        arg_values = [globals[name] for name in param_names]
+
+        start_time = time.perf_counter()
+        lowered = bench_func.lower(*arg_values)
+        compiled = lowered.compile()
+        compilation_time = self._to_units(time.perf_counter() - start_time)
+
+        hlo = compiled.as_text()
+        return hlo, compilation_time
 
     def _run_once(self, code: str, globals: dict[str, Any]) -> float:
         """Executes once a function and returns the elapsed time in the benchmark units."""
