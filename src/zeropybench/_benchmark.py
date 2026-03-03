@@ -190,8 +190,11 @@ class Benchmark:
     def _get_lines(self, filename: str) -> list[str]:
         text = self._cache.get(filename)
         if text is None:
-            if filename.startswith('<') and filename.endswith('>'):
-                text = ''.join(linecache.getlines(filename))
+            # Use linecache for special files (<...>, ipykernel temp files, etc.)
+            # linecache handles both regular files and IPython/Jupyter execution
+            lines = linecache.getlines(filename)
+            if lines:
+                text = ''.join(lines)
             else:
                 text = Path(filename).read_text()
             self._cache[filename] = text

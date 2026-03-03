@@ -64,6 +64,15 @@ jobs:
       - name: Run unit tests
         run: uv run pytest -v --cov=zeropybench --cov-report=xml tests
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Run notebook tests
+        if: matrix.python.version == '3.14'
+        run: uv run pytest -v docs
+
       - name: Upload coverage to Codecov
         if: matrix.python.version == '3.12'
         uses: codecov/codecov-action@v5

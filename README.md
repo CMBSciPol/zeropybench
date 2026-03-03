@@ -10,6 +10,8 @@
 [![Continuous integration](https://github.com/pchanial/zeropybench/actions/workflows/ci.yml/badge.svg)](https://github.com/pchanial/zeropybench/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/pchanial/zeropybench/graph/badge.svg)](https://codecov.io/gh/pchanial/zeropybench)
 
+<!-- Start common text with source/index.md -->
+
 **zeropybench** is a Python benchmarking library with zero overhead, designed for multidimensional performance analysis.
 
 ## Features
@@ -63,7 +65,7 @@ print(bench)
 
 ## JAX Support
 
-zeropybench automatically detects JAX arrays and optimizes benchmarking accordingly:
+ZeroPyBench automatically detects JAX arrays and optimizes benchmarking accordingly:
 
 ```python
 import jax.numpy as jnp
@@ -123,6 +125,8 @@ Benchmark(
     time_units='ns',             # Time units: 'ns', 'us', 'ms', 's'
 )
 ```
+
+<!-- End common text with source/index.md -->
 
 ## License
 
