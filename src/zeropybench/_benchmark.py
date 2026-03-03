@@ -152,10 +152,10 @@ class Benchmark:
 
         record: dict[str, ValidBenchmarkType] = {
             **keywords,
-            **is_jax_keywords,
             'median_execution_time': median_repeat_time,
             'execution_times': sorted(execution_times),
         }
+        record.update(is_jax_keywords)  # type: ignore[arg-type]
         self._report.append(record)
 
     def _get_execution_context(self) -> tuple[str, dict[str, Any], dict[str, Any]]:
@@ -203,6 +203,8 @@ class Benchmark:
         if jax is None:
             return False
         jaxlib = sys.modules.get('jaxlib')
+        if jaxlib is None:
+            raise ImportError('The library JAX is installed but not jaxlib...')
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
     def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float]:

@@ -67,7 +67,7 @@ class CodeASTParser:
         # Check if it's a simple call to an already jitted function
         if self._is_simple_jitted_call(combined):
             stmt = self.tree.body[0]
-            expr = stmt.value
+            expr = stmt.value  # type: ignore[attr-defined]
             args = [arg.id for arg in expr.args]
             func_name = expr.func.id
             bench_func = combined[func_name]
@@ -120,6 +120,7 @@ jax.block_until_ready(__rv)"""
         assigned_names = self._collect_assigned_names()
 
         # Build return value
+        return_value: ast.expr
         if len(assigned_names) == 1:
             # Single assigned variable: return it directly
             return_value = ast.Name(id=next(iter(assigned_names)), ctx=ast.Load())
@@ -147,6 +148,7 @@ jax.block_until_ready(__rv)"""
             ),
             body=body,
             decorator_list=[],
+            type_params=[],
         )
         ast.fix_missing_locations(func_def)
 
@@ -160,7 +162,7 @@ jax.block_until_ready(__rv)"""
         """Collect variable names assigned in the AST (Store context)."""
 
         class NameCollector(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.names: set[str] = set()
 
             def visit_Name(self, node: ast.Name) -> None:
@@ -176,7 +178,7 @@ jax.block_until_ready(__rv)"""
         """Collect variable names used in the AST."""
 
         class NameCollector(ast.NodeVisitor):
-            def __init__(self):
+            def __init__(self) -> None:
                 self.names: set[str] = set()
 
             def visit_Name(self, node: ast.Name) -> None:
