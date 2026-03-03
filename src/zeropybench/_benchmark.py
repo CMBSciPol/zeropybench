@@ -379,7 +379,6 @@ class Benchmark:
         by: str | Sequence[str] | None = None,
         **subplots_keywords: Any,
     ) -> matplotlib.figure.Figure:
-
         df = self.to_dataframe()
         if x is None:
             x = self._infer_default_x_axis_plot(df)

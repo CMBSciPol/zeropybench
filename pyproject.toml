@@ -54,3 +54,21 @@ skip_covered = true
 
 [tool.hatch.version]
 source = 'vcs'
+
+[tool.ruff]
+line-length = 100
+fix = true           # autofix issues
+force-exclude = true # useful with ruff-pre-commit plugin
+src = ['src', 'tests']
+
+[tool.ruff.lint]
+select = [
+    'E',      # pycodestyle-errors
+    'F',      # pyflakes
+    'I',      # isort
+    'UP',     # pyupgrade
+    'T10',    # flake8-debugger
+]
+
+[tool.ruff.format]
+quote-style = 'single'
