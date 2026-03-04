@@ -11,13 +11,10 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal
 
-import matplotlib.figure
-import matplotlib.pyplot as mp
 import polars as pl
-import polars.selectors as cs
-from matplotlib.axes import Axes
 
 from ._jax import CodeASTParser
+from ._plot import BenchmarkPlotter
 
 __all__ = ['Benchmark']
 
@@ -192,11 +189,7 @@ class Benchmark:
         if text is None:
             # Use linecache for special files (<...>, ipykernel temp files, etc.)
             # linecache handles both regular files and IPython/Jupyter execution
-            lines = linecache.getlines(filename)
-            if lines:
-                text = ''.join(lines)
-            else:
-                text = Path(filename).read_text()
+            text = ''.join(linecache.getlines(filename))
             self._cache[filename] = text
         return text.splitlines()
 
@@ -223,11 +216,6 @@ class Benchmark:
 
         hlo = compiled.as_text()
         return hlo, compilation_time
-
-    def _run_once(self, code: str, globals: dict[str, Any]) -> float:
-        """Executes once a function and returns the elapsed time in the benchmark units."""
-        timer = timeit.Timer(code, globals=globals)
-        return self._to_units(timer.timeit(number=1))
 
     def _run_many_times(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
@@ -340,7 +328,7 @@ class Benchmark:
         self,
         *,
         x: str | pl.Expr | None = None,
-        y: str | pl.Expr = pl.col('execution_times').list.median().alias('Execution time'),
+        y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
         **subplots_keywords: Any,
     ) -> None:
@@ -351,15 +339,15 @@ class Benchmark:
             y: The y-axis of the plots, as a benchmark report column name or expression.
             by: Key to divide into several subplots.
         """
-        fig = self._subplots(x=x, y=y, by=by, **subplots_keywords)
-        fig.show()
+        plotter = self._create_plotter(x=x, y=y, by=by)
+        plotter.show(**subplots_keywords)
 
     def write_plot(
         self,
         path: Path | str,
         *,
         x: str | pl.Expr | None = None,
-        y: str | pl.Expr = pl.col('execution_times').list.median().alias('Execution time'),
+        y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
         **subplots_keywords: Any,
     ) -> None:
@@ -371,114 +359,15 @@ class Benchmark:
             y: The y-axis of the plots, as a benchmark report column name or expression.
             by: Key to divide into several subplots.
         """
-        fig = self._subplots(x=x, y=y, by=by, **subplots_keywords)
-        fig.savefig(path)
+        plotter = self._create_plotter(x=x, y=y, by=by)
+        plotter.save(path, **subplots_keywords)
 
-    def _subplots(
+    def _create_plotter(
         self,
         *,
         x: str | pl.Expr | None = None,
-        y: str | pl.Expr = pl.col('execution_times').list.min().alias('Execution time'),
+        y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
-        **subplots_keywords: Any,
-    ) -> matplotlib.figure.Figure:
-        df = self.to_dataframe()
-        if x is None:
-            x = self._infer_default_x_axis_plot(df)
-        elif isinstance(x, str):
-            x = pl.col(x)
-        if isinstance(y, str):
-            y = pl.col(y)
-        if by is None:
-            by = []
-        elif isinstance(by, str):
-            by = [by]
-
-        invalid_columns = sorted(set(x.meta.root_names()) - set(df.columns))
-        if invalid_columns:
-            raise ValueError(
-                f'The column {", ".join(invalid_columns)} is not in the benchmark: {df.columns}'
-            )
-        invalid_columns = sorted(set(y.meta.root_names()) - set(df.columns))
-        if invalid_columns:
-            raise ValueError(
-                f'The column {", ".join(invalid_columns)} is not in the benchmark: {df.columns}'
-            )
-
-        excluded_columns = (
-            set(x.meta.root_names())
-            | set(y.meta.root_names())
-            | {'first_execution_time', 'compilation_time', 'median_execution_time', 'hlo'}
-        )
-        excluded_columns |= set(by)
-        legend_by = list({col: None for col in df.columns if col not in excluded_columns})
-
-        if by:
-            plot_partitions = df.partition_by(by, maintain_order=True, as_dict=True)
-        else:
-            plot_partitions = {(): df}
-
-        nsubplot = len(plot_partitions)
-        fig: matplotlib.figure.Figure
-        fig, axs = mp.subplots(nsubplot, **subplots_keywords)
-        if nsubplot == 1:
-            axs = (axs,)
-        for (plot_keys, plot_partition), ax in zip(plot_partitions.items(), axs):
-            xlabel = x.meta.output_name()
-            ylabel = f'{y.meta.output_name()} [{self.time_units}]'
-            self._subplot(ax, plot_partition, x=x, xlabel=xlabel, y=y, ylabel=ylabel, by=legend_by)
-
-        return fig
-
-    def _subplot(
-        self,
-        ax: Axes,
-        df: pl.DataFrame,
-        *,
-        x: pl.Expr,
-        y: pl.Expr,
-        xlabel: str,
-        ylabel: str,
-        by: list[str],
-    ) -> None:
-        ax.set(xlabel=xlabel, ylabel=ylabel)
-
-        if by:
-            legend_partitions = df.partition_by(by, maintain_order=True, as_dict=True)
-        else:
-            legend_partitions = {(): df}
-
-        for legend_keys, legend_partition in legend_partitions.items():
-            x_values = legend_partition.select(x).to_series()
-            y_values = legend_partition.select(y).to_series()
-            label = ', '.join(f'{k}={v}' for k, v in zip(by, legend_keys))
-            ax.loglog(x_values, y_values, marker='.', label=label)
-            # ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: str(v)))
-            ax.legend()
-
-    @staticmethod
-    def _infer_default_x_axis_plot(df: pl.DataFrame) -> pl.Expr:
-        """Infers the x-axis.
-
-        1) integer columns
-        2) numeric columns
-        3) columns with most entries
-        4) first benchmark keywords (outer scope)
-        """
-        numeric_df = df.select(cs.numeric()).select(pl.exclude('first_execution_time'))
-        integer_df = numeric_df.select(cs.integer())
-        if len(integer_df.columns) == 1:
-            return pl.col(integer_df.columns[0])
-        if len(integer_df.columns) > 1:
-            candidate_df = integer_df
-        else:
-            candidate_df = numeric_df
-
-        if len(candidate_df.columns) == 0:
-            raise ValueError('No numerical axis can be inferred from the benchmark.')
-
-        n_uniques = next(candidate_df.select(pl.all().n_unique()).iter_rows(named=True))
-        sorted_n_uniques = sorted(n_uniques.items(), key=lambda v: v[1])
-        max_entries = sorted_n_uniques[-1][1]
-        first_column_with_max_entries = [_[0] for _ in sorted_n_uniques if _[1] == max_entries][0]
-        return pl.col(first_column_with_max_entries)
+    ) -> BenchmarkPlotter:
+        """Create a BenchmarkPlotter instance."""
+        return BenchmarkPlotter(self.to_dataframe(), self.time_units, x=x, y=y, by=by)

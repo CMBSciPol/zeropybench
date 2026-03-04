@@ -1,5 +1,10 @@
 """Tests for zeropybench with pure Python code."""
 
+from pathlib import Path
+
+import polars as pl
+from pytest_mock import MockerFixture
+
 from zeropybench import Benchmark
 
 
@@ -114,3 +119,100 @@ def test_local_variables_in_loop():
     df = bench.to_dataframe()
     assert len(df) == 2
     assert df['n'].to_list() == [10, 100]
+
+
+def test_repr():
+    """Test __repr__ returns a string table."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(name='test'):
+        sum(range(100))
+
+    repr_str = repr(bench)
+    assert isinstance(repr_str, str)
+    assert 'test' in repr_str
+    assert 'execution_times' in repr_str
+
+
+def test_write_csv(tmp_path: Path):
+    """Test writing benchmark to CSV."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(name='test', n=100):
+        sum(range(100))
+
+    path = tmp_path / 'results.csv'
+    bench.write_csv(path)
+    assert path.exists()
+    content = path.read_text()
+    assert 'test' in content
+    assert 'execution_times' in content
+
+
+def test_write_parquet(tmp_path: Path):
+    """Test writing benchmark to Parquet."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(name='test', n=100):
+        sum(range(100))
+
+    path = tmp_path / 'results.parquet'
+    bench.write_parquet(path)
+    assert path.exists()
+    df = pl.read_parquet(path)
+    assert len(df) == 1
+    assert df['name'][0] == 'test'
+
+
+def test_write_markdown(tmp_path: Path):
+    """Test writing benchmark to Markdown."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(name='test', n=100):
+        sum(range(100))
+
+    path = tmp_path / 'results.md'
+    bench.write_markdown(path)
+    assert path.exists()
+    content = path.read_text()
+    assert 'test' in content
+    assert '|' in content  # Markdown table separator
+
+
+def test_write_markdown_with_string_path(tmp_path: Path):
+    """Test writing benchmark to Markdown with string path."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(name='test'):
+        sum(range(100))
+
+    path = str(tmp_path / 'results.md')  # String path, not Path object
+    bench.write_markdown(path)
+    assert Path(path).exists()
+
+
+def test_repeat_two():
+    """Test benchmark with repeat=2 (minimum for statistics.quantiles)."""
+    bench = Benchmark(repeat=2, min_duration_of_repeat=0.01)
+
+    with bench(name='test'):
+        sum(range(100))
+
+    d = bench.to_dicts()
+    assert len(d[0]['execution_times']) == 2
+
+
+def test_plot(mocker: MockerFixture):
+    """Test plot method calls plotter.show()."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    with bench(n=10):
+        sum(range(10))
+
+    with bench(n=100):
+        sum(range(100))
+
+    mock_show = mocker.patch('matplotlib.figure.Figure.show')
+    bench.plot()
+
+    mock_show.assert_called_once()

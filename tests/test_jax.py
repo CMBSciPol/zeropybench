@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import pytest
 from numpy.testing import assert_array_equal
 
+from zeropybench import Benchmark
 from zeropybench._jax import CodeASTParser
 
 
@@ -151,3 +152,67 @@ def test_multiple_statements() -> None:
     assert len(result) == 2
     assert_array_equal(result[0], jnp.array([4, 6]))  # a
     assert_array_equal(result[1], jnp.array([8, 12]))  # b
+
+
+def test_benchmark_jax_context():
+    """Test full JAX benchmark context with HLO and compilation time."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    x = jnp.array([1, 2, 3])
+    y = jnp.array([4, 5, 6])
+
+    with bench(method='add'):
+        x + y
+
+    report = bench.to_dicts()[0]
+
+    # Check JAX-specific fields are present
+    assert 'first_execution_time' in report
+    assert 'compilation_time' in report
+    assert 'hlo' in report
+
+    # Check types
+    assert isinstance(report['first_execution_time'], float)
+    assert isinstance(report['compilation_time'], float)
+    assert isinstance(report['hlo'], str)
+
+    # HLO should contain module info
+    assert 'HloModule' in report['hlo'] or 'module' in report['hlo'].lower()
+
+
+def test_benchmark_jax_jitted_function():
+    """Test JAX benchmark with already jitted function."""
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    @jax.jit
+    def add_arrays(x, y):
+        return x + y
+
+    x = jnp.array([1, 2, 3])
+    y = jnp.array([4, 5, 6])
+
+    with bench(method='jitted_add'):
+        add_arrays(x, y)
+
+    report = bench.to_dicts()[0]
+    assert 'hlo' in report
+    assert report['method'] == 'jitted_add'
+
+
+def test_benchmark_jax_plot(tmp_path):
+    """Test JAX benchmark plotting (excludes JAX-specific columns from legend)."""
+    import matplotlib
+
+    matplotlib.use('Agg')
+
+    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+
+    for n in [10, 100]:
+        x = jnp.ones(n)
+        y = jnp.ones(n)
+        with bench(n=n):
+            x + y
+
+    path = tmp_path / 'results.png'
+    bench.write_plot(path)
+    assert path.exists()

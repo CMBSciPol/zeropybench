@@ -35,6 +35,7 @@ dev = [
     'jax>=0.9; python_version>="3.11"',
     'pytest>=9.0',
     "pytest-cov>=7.0.0",
+    "pytest-mock>=3.15.1",
     'pytest-notebook>=0.10',
 ]
 docs = [
@@ -54,6 +55,9 @@ cuda13 = ['jax[cuda13]>=0.7; python_version>="3.11"']
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+exclude_also = [
+    "from typing_extensions import",
+]
 
 [tool.pytest]
 testpaths = ['tests']
