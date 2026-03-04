@@ -68,6 +68,7 @@ addopts = [
     '--strict-config',
     '--color=yes',
     '--cov=zeropybench',
+    '--no-cov-on-fail',
 ]
 filterwarnings = [
     'ignore::DeprecationWarning',
