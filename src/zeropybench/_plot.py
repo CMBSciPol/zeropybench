@@ -1,9 +1,11 @@
+import math
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
 import matplotlib.figure
 import matplotlib.pyplot as mp
+import matplotlib.ticker as ticker
 import polars as pl
 import polars.selectors as cs
 from matplotlib.axes import Axes
@@ -169,6 +171,10 @@ class BenchmarkPlotter:
             label = ', '.join(f'{k}={v}' for k, v in zip(legend_by, legend_keys))
             ax.loglog(x_values, y_values, marker='.', label=label if label else None)
 
+        ax.xaxis.set_major_formatter(_format_x_tick)
+        ax.yaxis.set_major_locator(ticker.LogLocator(subs=(1, 2, 5)))
+        ax.yaxis.set_major_formatter(_format_y_tick)
+
         if legend_by:
             ax.legend()
 
@@ -222,3 +228,21 @@ class BenchmarkPlotter:
         max_entries = sorted_n_uniques[-1][1]
         first_column_with_max_entries = [_[0] for _ in sorted_n_uniques if _[1] == max_entries][0]
         return pl.col(first_column_with_max_entries)
+
+
+def _format_x_tick(x: float, pos: float) -> str:
+    """Format X tick values: use decimal for 0.001-1000, power of 10 otherwise."""
+    if 0.001 <= x <= 1000:
+        return f'{x:g}'
+
+    exp = int(math.log10(x))
+    return f'$10^{{{exp}}}$'
+
+
+def _format_y_tick(x: float, pos: float) -> str:
+    """Format Y tick values: use decimal for 0.001-1000, scientific notation otherwise."""
+    if 0.001 <= x <= 1000:
+        return f'{x:g}'
+    mantissa, exp = f'{x:.2e}'.split('e')
+    mantissa = mantissa.rstrip('0').rstrip('.')
+    return f'{mantissa}e{exp}'
