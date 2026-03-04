@@ -39,28 +39,28 @@ for n in [100, 1000, 10000]:
 ```
 Output:
 ```text
-method=sum, n=100: 0.579 us ± 2.38 ns (median ± std. dev. of 7 runs, 500000 loops each)
-method=len, n=100: 0.020 us ± 0.45 ns (median ± std. dev. of 7 runs, 20000000 loops each)
-method=sum, n=1000: 5.369 us ± 44.70 ns (median ± std. dev. of 7 runs, 50000 loops each)
-method=len, n=1000: 0.029 us ± 0.09 ns (median ± std. dev. of 7 runs, 10000000 loops each)
-method=sum, n=10000: 53.728 us ± 69.86 ns (median ± std. dev. of 7 runs, 5000 loops each)
-method=len, n=10000: 0.029 us ± 0.25 ns (median ± std. dev. of 7 runs, 10000000 loops each)
+method=sum, n=100: 575.124 ns ± 3.35% (median of 7 runs, 500000 loops each)
+method=len, n=100: 19.037 ns ± 0.85% (median of 7 runs, 20000000 loops each)
+method=sum, n=1000: 2.961 µs ± 36.70% (median of 7 runs, 50000 loops each)
+method=len, n=1000: 19.844 ns ± 38.63% (median of 7 runs, 10000000 loops each)
+method=sum, n=10000: 50.208 µs ± 9.89% (median of 7 runs, 5000 loops each)
+method=len, n=10000: 28.686 ns ± 1.22% (median of 7 runs, 20000000 loops each)
 ```
 
 ```python
 print(bench)
 ```
 ```text
-┌────────┬────────┬─────────────────────────────────┐
-│ method ┆ n      ┆ execution_times                 │
-╞════════╪════════╪═════════════════════════════════╡
-│ sum    ┆ 100    ┆ [0.577805, 0.57815, … 0.581231… │
-│ len    ┆ 100    ┆ [0.019207, 0.019278, … 0.01958… │
-│ sum    ┆ 1_000  ┆ [5.417795, 5.33863, … 5.35146]  │
-│ len    ┆ 1_000  ┆ [0.028898, 0.030144, … 0.03007… │
-│ sum    ┆ 10_000 ┆ [53.743199, 53.664567, … 53.72… │
-│ len    ┆ 10_000 ┆ [0.028857, 0.028911, … 0.02942… │
-└────────┴────────┴─────────────────────────────────┘
+┌────────┬────────┬────────────────────────────┬───────────┐
+│ method ┆ n      ┆ median_execution_time (ns) ┆ ± (%)     │
+╞════════╪════════╪════════════════════════════╪═══════════╡
+│ sum    ┆ 100    ┆ 575.124442                 ┆ 3.353129  │
+│ len    ┆ 100    ┆ 19.036998                  ┆ 0.854601  │
+│ sum    ┆ 1_000  ┆ 2_961.25732                ┆ 36.698258 │
+│ len    ┆ 1_000  ┆ 19.844193                  ┆ 38.63371  │
+│ sum    ┆ 10_000 ┆ 50_207.584997              ┆ 9.894165  │
+│ len    ┆ 10_000 ┆ 28.686439                  ┆ 1.22376   │
+└────────┴────────┴────────────────────────────┴───────────┘
 ```
 
 ## JAX Support
@@ -122,7 +122,6 @@ bench.write_plot('results.pdf')
 Benchmark(
     repeat=7,                    # Number of measurement repetitions
     min_duration_of_repeat=0.2,  # Minimum duration per repeat (seconds)
-    time_units='ns',             # Time units: 'ns', 'us', 'ms', 's'
 )
 ```
 

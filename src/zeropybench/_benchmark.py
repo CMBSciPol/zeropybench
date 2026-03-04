@@ -1,7 +1,6 @@
 import contextlib
 import inspect
 import linecache
-import statistics
 import sys
 import textwrap
 import time
@@ -9,7 +8,7 @@ import timeit
 from collections.abc import Callable, Iterator, Sequence
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import polars as pl
 
@@ -18,70 +17,58 @@ from ._plot import BenchmarkPlotter
 
 __all__ = ['Benchmark']
 
+from ._units import get_optimal_time_units, to_units
+
 ValidBenchmarkType = bool | int | float | str | list[float]
-TimeUnitType = Literal['ns', 'us', 'ms', 's']
-TIME_UNITS_MULTIPLIER: dict[TimeUnitType, float] = {
-    's': 1.0,
-    'ms': 1000.0,
-    'us': 1000_000.0,
-    'ns': 1_000_000_000.0,
-}
-STDEV_TIME_UNITS: dict[TimeUnitType, TimeUnitType] = {
-    's': 's',
-    'ms': 'us',
-    'us': 'ns',
-    'ns': 'ns',
-}
 
 
 class Benchmark:
     """A class for multidimensional benchmarking of code snippets.
 
-    Usage:
-        >>> import jax.numpy as jnp
-        >>> bench = Benchmark(repeat=10)
-        >>> for N in [10, 100, 1000, 10000, 100_000, 1_000_000]:
-        ...     x = jnp.ones(N)
-        ...     y = jnp.ones(1000)
-        ...     with bench(method='broadcast right', N=N):
-        ...         x[:, None] + y[None, :]
-        ...     with bench(method='broadcast left', N=N):
-        ...         x[None, :] + y[:, None]
-        >>> print(bench)
-    ┌─────────────────┬───────────┬──────────────────────┬─────────────────────────────────┐
-    │ method          ┆ N         ┆ first_execution_time ┆ execution_times                 │
-    ╞═════════════════╪═══════════╪══════════════════════╪═════════════════════════════════╡
-    │ broadcast right ┆ 10        ┆ 34.353204            ┆ [0.210183, 0.210074, … 0.20946… │
-    │ broadcast left  ┆ 10        ┆ 36.472133            ┆ [0.220572, 0.22118, … 0.221245… │
-    │ broadcast right ┆ 100       ┆ 27.134279            ┆ [0.226366, 0.226376, … 0.22619… │
-    │ broadcast left  ┆ 100       ┆ 26.604938            ┆ [0.2263, 0.228083, … 0.22751]   │
-    │ broadcast right ┆ 1_000     ┆ 19.080388            ┆ [0.336571, 0.367122, … 0.15893… │
-    │ broadcast left  ┆ 1_000     ┆ 18.100275            ┆ [0.320024, 0.300872, … 0.32235… │
-    │ broadcast right ┆ 10_000    ┆ 33.618927            ┆ [5.599664, 5.555191, … 5.69679… │
-    │ broadcast left  ┆ 10_000    ┆ 33.551694            ┆ [5.663586, 5.671626, … 5.76813… │
-    │ broadcast right ┆ 100_000   ┆ 79.550476            ┆ [51.543066, 51.413535, … 51.61… │
-    │ broadcast left  ┆ 100_000   ┆ 79.723651            ┆ [52.384487, 52.2496, … 52.3993… │
-    │ broadcast right ┆ 1_000_000 ┆ 482.147623           ┆ [450.758266, 453.388479, … 452… │
-    │ broadcast left  ┆ 1_000_000 ┆ 490.124676           ┆ [467.215606, 462.161977, … 463… │
-    └─────────────────┴───────────┴──────────────────────┴─────────────────────────────────┘
-        >>> bench.write_csv('bench.csv')
-        >>> bench.write_markdown('bench.md')
-        >>> bench.plot()
-        >>> bench.write_plot('bench.pdf')
+        Usage:
+            >>> import jax.numpy as jnp
+            >>> bench = Benchmark(repeat=10)
+            >>> for N in [10, 100, 1000, 10000, 100_000, 1_000_000]:
+            ...     x = jnp.ones(N)
+            ...     y = jnp.ones(1000)
+            ...     with bench(method='broadcast right', N=N):
+            ...         x[:, None] + y[None, :]
+            ...     with bench(method='broadcast left', N=N):
+            ...         x[None, :] + y[:, None]
+            >>> print(bench)
+    ┌─────────────────┬───────────┬────────────────────────────┬───────────┬───────────────────────────┬───────────────────────┐
+    │ method          ┆ N         ┆ median_execution_time (µs) ┆ ± (%)     ┆ first_execution_time (µs) ┆ compilation_time (µs) │
+    ╞═════════════════╪═══════════╪════════════════════════════╪═══════════╪═══════════════════════════╪═══════════════════════╡
+    │ broadcast right ┆ 10        ┆ 42.898731                  ┆ 1.624434  ┆ 57_578.695007             ┆ 35_968.202996         │
+    │ broadcast left  ┆ 10        ┆ 42.311095                  ┆ 0.984904  ┆ 42_322.827008             ┆ 26_705.180993         │
+    │ broadcast right ┆ 100       ┆ 42.385543                  ┆ 0.367914  ┆ 49_297.293008             ┆ 37_931.365005         │
+    │ broadcast left  ┆ 100       ┆ 44.101337                  ┆ 2.147681  ┆ 50_773.183                ┆ 38_241.692004         │
+    │ broadcast right ┆ 1_000     ┆ 56.966551                  ┆ 2.445284  ┆ 38_928.845999             ┆ 38_215.008011         │
+    │ broadcast left  ┆ 1_000     ┆ 50.634992                  ┆ 9.380772  ┆ 31_585.520002             ┆ 28_907.275002         │
+    │ broadcast right ┆ 10_000    ┆ 161.021684                 ┆ 3.255582  ┆ 36_715.780996             ┆ 27_870.487989         │
+    │ broadcast left  ┆ 10_000    ┆ 166.723878                 ┆ 4.231237  ┆ 42_878.715001             ┆ 26_596.944008         │
+    │ broadcast right ┆ 100_000   ┆ 1_381.86161                ┆ 11.307259 ┆ 49_187.76                 ┆ 41_679.561997         │
+    │ broadcast left  ┆ 100_000   ┆ 1_394.936208               ┆ 4.29877   ┆ 44_465.061001             ┆ 27_617.544998         │
+    │ broadcast right ┆ 1_000_000 ┆ 10_284.1733                ┆ 0.706548  ┆ 34_732.489992             ┆ 26_034.978            │
+    │ broadcast left  ┆ 1_000_000 ┆ 20_405.4006                ┆ 0.286     ┆ 48_092.860001             ┆ 26_902.942001         │
+    └─────────────────┴───────────┴────────────────────────────┴───────────┴───────────────────────────┴───────────────────────┘
+            >>> bench.write_csv('bench.csv')
+            >>> bench.write_markdown('bench.md')
+            >>> bench.plot()
+            >>> bench.write_plot('bench.pdf')
 
-    Attributes:
-        repeat: The number of times the estimation of the elapsed time will be performed. Each
-            repeat will usually execute the benchmarked code many times.
-        min_duration_of_repeat: The minimum duration of one repeat, in seconds. The function will be
-            executed as many times as it is necessary so that the total execution time is greater
-            than this value. The execution time for this repeat is the mean value of the execution
-            times.
-        time_units: The request units for the execution times ('ns', 'us', 'ms' or 's')
-        _report: Storage for the individual measurements.
-        _cache: Cache of the content of the file names used to extract the with statement context.
-            We don't use the linecache module (except for <...> files) since it's preferable to
-            reset the cache each time a Benchmark class is instantiated (otherwise modifications of
-            the benchmark may not be reflected).
+        Attributes:
+            repeat: The number of times the estimation of the elapsed time will be performed. Each
+                repeat will usually execute the benchmarked code many times.
+            min_duration_of_repeat: The minimum duration of one repeat, in seconds. The function will be
+                executed as many times as it is necessary so that the total execution time is greater
+                than this value. The execution time for this repeat is the mean value of the execution
+                times.
+            _report: Storage for the individual measurements.
+            _cache: Cache of the content of the file names used to extract the with statement context.
+                We don't use the linecache module (except for <...> files) since it's preferable to
+                reset the cache each time a Benchmark class is instantiated (otherwise modifications of
+                the benchmark may not be reflected).
     """
 
     def __init__(
@@ -89,7 +76,6 @@ class Benchmark:
         *,
         repeat: int = 7,
         min_duration_of_repeat: float = 0.2,
-        time_units: TimeUnitType = 'ns',
     ) -> None:
         """Returns a Benchmark instance.
 
@@ -100,11 +86,9 @@ class Benchmark:
                 will be executed as many times as necessary so that the total execution time is
                 greater than this value. The execution time for this repeat is the mean value of
                 the execution times.
-            time_units: The request units for the execution times ('ns', 'us', 'ms' or 's').
         """
         self.repeat = repeat
         self.min_duration_of_repeat = min_duration_of_repeat
-        self.time_units = time_units
         self._report: list[dict[str, ValidBenchmarkType]] = []
         self._cache: dict[str, str] = {}
 
@@ -116,13 +100,13 @@ class Benchmark:
             tbl_hide_column_data_types=True,
             tbl_hide_dataframe_shape=True,
         ):
-            return str(self.to_dataframe())
+            return str(self._to_display_dataframe())
 
     @contextlib.contextmanager
     def __call__(self, **keywords: ValidBenchmarkType) -> Iterator[None]:
         start_time = time.perf_counter()
         yield
-        first_time = self._to_units(time.perf_counter() - start_time)
+        first_time = time.perf_counter() - start_time
         code, f_locals, f_globals = self._get_execution_context()
         is_jax = self._is_jax_context(f_locals)
         if is_jax:
@@ -139,17 +123,18 @@ class Benchmark:
             is_jax_keywords = {}
             globals = f_locals | f_globals
         execution_times, number = self._run_many_times(code, first_time, globals)
-        median_repeat_time, stdev_time = self._get_statistics(execution_times)
-        stdev_time, stdev_time_units = self._to_stdev_units(stdev_time)
+        median, rel_stdev = self._get_statistics(execution_times)
+        units = get_optimal_time_units([median])
+        median_display = to_units(median, units)
         message = ', '.join(f'{k}={v}' for k, v in keywords.items() if k != 'first_execution_time')
         print(
-            f'{message}: {median_repeat_time:.3f} {self.time_units} ± {stdev_time:.2f} '
-            f'{stdev_time_units} (median ± std. dev. of {self.repeat} runs, {number} loops each)'
+            f'{message}: {median_display:.3f} {units} ± {rel_stdev:.2f}% '
+            f'(median of {self.repeat} runs, {number} loops each)'
         )
 
         record: dict[str, ValidBenchmarkType] = {
             **keywords,
-            'median_execution_time': median_repeat_time,
+            'median_execution_time': median,
             'execution_times': sorted(execution_times),
         }
         record.update(is_jax_keywords)  # type: ignore[arg-type]
@@ -204,7 +189,7 @@ class Benchmark:
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
     def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float]:
-        """Compile the JAX function and return the HLO and compilation time."""
+        """Compile the JAX function and return the HLO and compilation time in seconds."""
         bench_func = globals['__bench_func']
         param_names = list(inspect.signature(bench_func).parameters.keys())
         arg_values = [globals[name] for name in param_names]
@@ -212,7 +197,7 @@ class Benchmark:
         start_time = time.perf_counter()
         lowered = bench_func.lower(*arg_values)
         compiled = lowered.compile()
-        compilation_time = self._to_units(time.perf_counter() - start_time)
+        compilation_time = time.perf_counter() - start_time
 
         hlo = compiled.as_text()
         return hlo, compilation_time
@@ -220,33 +205,33 @@ class Benchmark:
     def _run_many_times(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
     ) -> tuple[list[float], int]:
-        """Returns execution time in the benchmark units.
+        """Returns execution times in seconds.
 
         Args:
             func: the function or code snippet to be executed.
-            first_time: The execution time in benchmark units of the code that was run in the
+            first_time: The execution time in seconds of the code that was run in the
                 context manager.
             globals: The combined locals and globals of the code.
         """
         number, time_taken = self._autorange(func, first_time, globals)
         timer = timeit.Timer(func, globals=globals)
         runs = [time_taken / number] + [
-            self._to_units(_) / number for _ in timer.repeat(repeat=self.repeat - 1, number=number)
+            _ / number for _ in timer.repeat(repeat=self.repeat - 1, number=number)
         ]
         return runs, number
 
     def _autorange(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
     ) -> tuple[int, float]:
-        """Returns the number of loops so that total time is greater than min_duration_of_repeat..
+        """Returns the number of loops so that total time is greater than min_duration_of_repeat.
 
         Calls the timeit method with increasing numbers from the sequence
         1, 2, 5, 10, 20, 50, ... until the time taken is at least min_duration_of_repeat
-        Returns (number, time_taken_in_benchmark_units).
+        Returns (number, time_taken_in_seconds).
 
         Adapted from the timeit module.
         """
-        if first_time >= self._to_units(self.min_duration_of_repeat):
+        if first_time >= self.min_duration_of_repeat:
             return 1, first_time
 
         timer = timeit.Timer(func, globals=globals)
@@ -259,31 +244,61 @@ class Benchmark:
                 number = i * j
                 time_taken = timer.timeit(number)
                 if time_taken >= self.min_duration_of_repeat:
-                    return number, self._to_units(time_taken)
+                    return number, time_taken
             i *= 10
 
     def _get_statistics(self, execution_times: list[float]) -> tuple[float, float]:
-        low, median, high = statistics.quantiles(execution_times)
-        if self.repeat < 2:
-            stdev = 0.0
-        else:
-            mad = statistics.median(abs(_ - median) for _ in execution_times)
-            stdev = 1.4826 * mad
-        return median, stdev
+        """Return the median and the relative MAD scaled to estimate standard deviation"""
+        df = pl.DataFrame({'values': [execution_times]})
+        df = df.select(median=pl.col('values').list.median(), mad=self._get_mad(pl.col('values')))
+        median = df['median'].item()
+        rel_stdev = 1.4826 * df['mad'].item() / median * 100
+        return median, rel_stdev
 
-    def _to_units(self, value_s: float) -> float:
-        return value_s * TIME_UNITS_MULTIPLIER[self.time_units]
-
-    def _to_stdev_units(self, value: float) -> tuple[float, str]:
-        stdev_units = STDEV_TIME_UNITS[self.time_units]
-        return (
-            value * TIME_UNITS_MULTIPLIER[stdev_units] / TIME_UNITS_MULTIPLIER[self.time_units],
-            stdev_units,
-        )
+    @staticmethod
+    def _get_mad(column: pl.Expr) -> pl.Expr:
+        """Return the Median Absolute Deviation."""
+        expr_element = abs(pl.element() - pl.element().median()).median()
+        return column.list.eval(expr_element).list.first()
 
     def to_dataframe(self) -> pl.DataFrame:
-        """Returns the benchmark as a Polars dataframe."""
+        """Returns the benchmark as a Polars dataframe with times in seconds."""
         return pl.DataFrame(self._report)
+
+    def _to_display_dataframe(self) -> pl.DataFrame:
+        """Returns the benchmark as a Polars dataframe with times in display units."""
+        df = self.to_dataframe()
+        excluded_columns = [
+            'median_execution_time',
+            'execution_times',
+            'first_execution_time',
+            'compilation_time',
+            'mad',
+            'hlo',
+        ]
+        extra_columns = [
+            col for col in ('first_execution_time', 'compilation_time') if col in df.columns
+        ]
+
+        if not self._report:
+            return df.select(
+                pl.exclude(excluded_columns),
+                pl.lit(None, pl.Float64).alias('± (%)'),
+                *extra_columns,
+            )
+
+        units = get_optimal_time_units(df['median_execution_time'])
+        suffix = f' ({units})'
+        df = df.with_columns(
+            mad=self._get_mad(pl.col('execution_times')),
+        )
+        df = df.select(
+            pl.exclude(excluded_columns),
+            to_units(pl.col('median_execution_time').name.suffix(suffix), units),
+            (1.4826 * pl.col('mad') / pl.col('median_execution_time') * 100).alias('± (%)'),
+            to_units(pl.col(extra_columns).name.suffix(suffix), units),
+        )
+        return df
 
     def to_dicts(self) -> list[dict[str, Any]]:
         """Returns the benchmark as a list of dicts."""
@@ -370,4 +385,4 @@ class Benchmark:
         by: str | Sequence[str] | None = None,
     ) -> BenchmarkPlotter:
         """Create a BenchmarkPlotter instance."""
-        return BenchmarkPlotter(self.to_dataframe(), self.time_units, x=x, y=y, by=by)
+        return BenchmarkPlotter(self.to_dataframe(), x=x, y=y, by=by)

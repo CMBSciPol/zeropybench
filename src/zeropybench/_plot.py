@@ -8,11 +8,11 @@ import polars as pl
 import polars.selectors as cs
 from matplotlib.axes import Axes
 
+from ._units import TimeUnitType, get_optimal_time_units, to_units
+
 __all__ = ['BenchmarkPlotter']
 
-TimeUnitType = Literal['ns', 'us', 'ms', 's']
-
-DEFAULT_Y = pl.col('execution_times').list.median().alias('Execution time')
+DEFAULT_Y = pl.col('median_execution_time').alias('Execution time')
 
 # Columns that should be excluded from legend partitioning
 EXCLUDED_COLUMNS = frozenset(
@@ -24,8 +24,8 @@ class BenchmarkPlotter:
     """Handles plotting of benchmark results.
 
     Args:
-        df: The benchmark data as a Polars DataFrame.
-        time_units: The time units used in the benchmark.
+        df: The benchmark data in seconds as a Polars DataFrame.
+        display_time_units: The time units to be used for display (automatically inferred by default).
         x: The x-axis, as a column name or Polars expression.
         y: The y-axis, as a column name or Polars expression.
         by: Key(s) to divide into several subplots.
@@ -34,16 +34,31 @@ class BenchmarkPlotter:
     def __init__(
         self,
         df: pl.DataFrame,
-        time_units: TimeUnitType,
+        display_time_units: TimeUnitType | Literal['us'] | None = None,
         *,
         x: str | pl.Expr | None = None,
         y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
     ) -> None:
+        if display_time_units is None:
+            display_time_units = get_optimal_time_units(df['median_execution_time'])
+        elif display_time_units == 'us':
+            display_time_units = 'µs'
+        if (dtype := df.schema.get('execution_times')) is not None and dtype == pl.String:
+            # transform string "[1.12, 0.42]" into list of floats [1.12, 0.42]
+            df = df.with_columns(
+                pl.col('execution_times')
+                .str.strip_prefix('[')
+                .str.strip_suffix(']')
+                .str.split(', ')
+                .cast(pl.List(pl.Float64))
+            )
+        df = df.with_columns(to_units(pl.col('^.*_times?$'), display_time_units))
+
         if y is None:
             y = DEFAULT_Y
         self.df = df
-        self.time_units = time_units
+        self.display_time_units = display_time_units
         self.x = self._normalize_x(x, df)
         self.y = self._normalize_expr(y)
         self.by = self._normalize_by(by)
@@ -122,7 +137,7 @@ class BenchmarkPlotter:
             axs = (axs,)
 
         xlabel = self.x.meta.output_name()
-        ylabel = f'{self.y.meta.output_name()} [{self.time_units}]'
+        ylabel = f'{self.y.meta.output_name()} [{self.display_time_units}]'
 
         for (plot_keys, plot_partition), ax in zip(plot_partitions.items(), axs):
             self._draw_subplot(

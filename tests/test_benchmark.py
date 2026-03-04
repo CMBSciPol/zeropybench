@@ -50,17 +50,6 @@ def test_multidimensional_keywords():
     assert df['variant'][0] == 'a'
 
 
-def test_time_units():
-    """Test different time units."""
-    for unit in ['ns', 'us', 'ms', 's']:
-        bench = Benchmark(repeat=3, min_duration_of_repeat=0.01, time_units=unit)
-
-        with bench(name='test'):
-            sum(range(100))
-
-        assert bench.time_units == unit
-
-
 def test_multiline_code():
     """Test benchmark with multiple statements."""
     bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
@@ -131,7 +120,8 @@ def test_repr():
     repr_str = repr(bench)
     assert isinstance(repr_str, str)
     assert 'test' in repr_str
-    assert 'execution_times' in repr_str
+    assert 'median_execution_time' in repr_str
+    assert '± (%)' in repr_str
 
 
 def test_write_csv(tmp_path: Path):
