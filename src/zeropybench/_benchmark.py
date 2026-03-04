@@ -337,7 +337,7 @@ class Benchmark:
         self,
         *,
         x: str | pl.Expr | None = None,
-        y: str | pl.Expr = pl.col('execution_times').list.min().alias('Execution time'),
+        y: str | pl.Expr = pl.col('execution_times').list.median().alias('Execution time'),
         by: str | Sequence[str] | None = None,
         **subplots_keywords: Any,
     ) -> None:
@@ -356,7 +356,7 @@ class Benchmark:
         path: Path | str,
         *,
         x: str | pl.Expr | None = None,
-        y: str | pl.Expr = pl.col('execution_times').list.min().alias('Execution time'),
+        y: str | pl.Expr = pl.col('execution_times').list.median().alias('Execution time'),
         by: str | Sequence[str] | None = None,
         **subplots_keywords: Any,
     ) -> None:
@@ -403,7 +403,9 @@ class Benchmark:
             )
 
         excluded_columns = (
-            set(x.meta.root_names()) | set(y.meta.root_names()) | {'first_execution_time'}
+            set(x.meta.root_names())
+            | set(y.meta.root_names())
+            | {'first_execution_time', 'compilation_time', 'median_execution_time', 'hlo'}
         )
         excluded_columns |= set(by)
         legend_by = list({col: None for col in df.columns if col not in excluded_columns})
