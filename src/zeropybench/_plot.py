@@ -134,17 +134,32 @@ class BenchmarkPlotter:
 
         nsubplot = len(plot_partitions)
         fig: matplotlib.figure.Figure
+        subplots_keywords.setdefault('sharex', True)
         fig, axs = mp.subplots(nsubplot, **subplots_keywords)
         if nsubplot == 1:
             axs = (axs,)
+        else:
+            fig.subplots_adjust(hspace=0)
 
         xlabel = self.x.meta.output_name()
-        ylabel = f'{self.y.meta.output_name()} [{self.display_time_units}]'
+        ylabel_base = f'{self.y.meta.output_name()} [{self.display_time_units}]'
 
-        for (plot_keys, plot_partition), ax in zip(plot_partitions.items(), axs):
+        for i, ((plot_keys, plot_partition), ax) in enumerate(zip(plot_partitions.items(), axs)):
+            show_xlabel = i == nsubplot - 1
+            if plot_keys:
+                by_label = ', '.join(f'{k}: {v}' for k, v in zip(self.by, plot_keys))
+                ylabel = f'{by_label}\n{ylabel_base}'
+            else:
+                ylabel = ylabel_base
             self._draw_subplot(
-                ax, plot_partition, xlabel=xlabel, ylabel=ylabel, legend_by=legend_by
+                ax,
+                plot_partition,
+                xlabel=xlabel if show_xlabel else '',
+                ylabel=ylabel,
+                legend_by=legend_by,
             )
+            if not show_xlabel:
+                ax.tick_params(labelbottom=False)
 
         return fig
 
