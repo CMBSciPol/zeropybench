@@ -126,9 +126,12 @@ class Benchmark:
         median, rel_stdev = self._get_statistics(execution_times)
         units = get_optimal_time_units([median])
         median_display = to_units(median, units)
-        message = ', '.join(f'{k}={v}' for k, v in keywords.items() if k != 'first_execution_time')
+        if keywords:
+            message = ', '.join(f'{k}={v}' for k, v in keywords.items()) + ': '
+        else:
+            message = ''
         print(
-            f'{message}: {median_display:.3f} {units} ± {rel_stdev:.2f}% '
+            f'{message}{median_display:.3f} {units} ± {rel_stdev:.2f}% '
             f'(median of {self.repeat} runs, {number} loops each)'
         )
 
