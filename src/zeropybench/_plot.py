@@ -76,7 +76,7 @@ class BenchmarkPlotter:
     def _normalize_x(self, x: str | pl.Expr | None, df: pl.DataFrame) -> pl.Expr:
         """Normalize x to a Polars expression, inferring if None."""
         if x is None:
-            return self._infer_default_x_axis(df)
+            x = self._infer_x_axis(df)
         if isinstance(x, str):
             return pl.col(x)
         return x
@@ -306,22 +306,24 @@ class BenchmarkPlotter:
         fig.savefig(path)
 
     @staticmethod
-    def _infer_default_x_axis(df: pl.DataFrame) -> pl.Expr:
+    def _infer_x_axis(df: pl.DataFrame) -> str:
         """Infer the default x-axis from the DataFrame.
 
         Priority:
         1) Single integer column
-        2) Integer column with most unique values
-        3) Numeric column with most unique values
+        2) Integer column with the greatest number of unique values
+        3) Numeric column with the greatest number of unique values
 
         Raises:
             ValueError: If no numerical column can be inferred.
         """
-        numeric_df = df.select(cs.numeric()).select(pl.exclude('first_execution_time'))
+        numeric_df = df.select(cs.numeric()).select(
+            pl.exclude('median_execution_time', 'first_execution_time', 'compilation_time')
+        )
         integer_df = numeric_df.select(cs.integer())
 
         if len(integer_df.columns) == 1:
-            return pl.col(integer_df.columns[0])
+            return integer_df.columns[0]
 
         if len(integer_df.columns) > 1:
             candidate_df = integer_df
@@ -332,10 +334,8 @@ class BenchmarkPlotter:
             raise ValueError('No numerical axis can be inferred from the benchmark.')
 
         n_uniques = next(candidate_df.select(pl.all().n_unique()).iter_rows(named=True))
-        sorted_n_uniques = sorted(n_uniques.items(), key=lambda v: v[1])
-        max_entries = sorted_n_uniques[-1][1]
-        first_column_with_max_entries = [_[0] for _ in sorted_n_uniques if _[1] == max_entries][0]
-        return pl.col(first_column_with_max_entries)
+        first_column_with_max_entries, _ = max(n_uniques.items(), key=lambda x: x[1])
+        return first_column_with_max_entries
 
 
 def _format_x_tick(x: float, pos: float) -> str:

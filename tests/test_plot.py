@@ -76,29 +76,31 @@ def no_numeric_user_df() -> pl.DataFrame:
         {
             'name': ['test1', 'test2'],
             'execution_times': [[1.0, 1.1], [2.0, 2.1]],
-            # first_execution_time is excluded from x-axis inference
             'first_execution_time': [1.05, 2.05],
+            'median_execution_time': [1.05, 2.05],
         }
     )
 
 
 def test_benchmark_plotter_conversion_from_csv() -> None:
-    df = pl.DataFrame({'median_execution_time': [1.0], 'execution_times': ['[0.9, 1.1]']})
+    df = pl.DataFrame({'n': [1], 'median_execution_time': [1.0], 'execution_times': ['[0.9, 1.1]']})
     plotter = BenchmarkPlotter(df)
 
-    expected_df = pl.DataFrame({'median_execution_time': [1.0], 'execution_times': [[0.9, 1.1]]})
+    expected_df = pl.DataFrame(
+        {'n': [1], 'median_execution_time': [1.0], 'execution_times': [[0.9, 1.1]]}
+    )
     assert_frame_equal(plotter.df, expected_df)
 
 
 def test_benchmark_plotter_display_time_units() -> None:
-    df = pl.DataFrame({'median_execution_time': [1.0]})
+    df = pl.DataFrame({'n': [1], 'median_execution_time': [1.0]})
     plotter = BenchmarkPlotter(df, display_time_units='ns')
 
     assert plotter.display_time_units == 'ns'
 
 
 def test_benchmark_plotter_display_time_units_from_us() -> None:
-    df = pl.DataFrame({'median_execution_time': [1.0]})
+    df = pl.DataFrame({'n': [1], 'median_execution_time': [1.0]})
     plotter = BenchmarkPlotter(df, display_time_units='us')
 
     assert plotter.display_time_units == 'µs'
