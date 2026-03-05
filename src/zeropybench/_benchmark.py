@@ -345,6 +345,7 @@ class Benchmark:
         x: str | pl.Expr | None = None,
         y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
+        reference: str | None = None,
         **subplots_keywords: Any,
     ) -> None:
         """Plots the benchmark report in a figure.
@@ -353,8 +354,12 @@ class Benchmark:
             x: The x-axis of the plots, as a benchmark report column name or expression.
             y: The y-axis of the plots, as a benchmark report column name or expression.
             by: Key to divide into several subplots.
+            reference: Legend label of the reference method for speedup comparison.
+                When specified, a second column of subplots shows the speedup
+                (reference_time / method_time) for each method. Values > 1 mean
+                faster than the reference.
         """
-        plotter = self._create_plotter(x=x, y=y, by=by)
+        plotter = self._create_plotter(x=x, y=y, by=by, reference=reference)
         plotter.show(**subplots_keywords)
 
     def write_plot(
@@ -364,6 +369,7 @@ class Benchmark:
         x: str | pl.Expr | None = None,
         y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
+        reference: str | None = None,
         **subplots_keywords: Any,
     ) -> None:
         """Saves the benchmark plot in a file.
@@ -373,8 +379,12 @@ class Benchmark:
             x: The x-axis of the plots, as a benchmark report column name or expression.
             y: The y-axis of the plots, as a benchmark report column name or expression.
             by: Key to divide into several subplots.
+            reference: Legend label of the reference method for speedup comparison.
+                When specified, a second column of subplots shows the speedup
+                (reference_time / method_time) for each method. Values > 1 mean
+                faster than the reference.
         """
-        plotter = self._create_plotter(x=x, y=y, by=by)
+        plotter = self._create_plotter(x=x, y=y, by=by, reference=reference)
         plotter.save(path, **subplots_keywords)
 
     def _create_plotter(
@@ -383,6 +393,7 @@ class Benchmark:
         x: str | pl.Expr | None = None,
         y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
+        reference: str | None = None,
     ) -> BenchmarkPlotter:
         """Create a BenchmarkPlotter instance."""
-        return BenchmarkPlotter(self.to_dataframe(), x=x, y=y, by=by)
+        return BenchmarkPlotter(self.to_dataframe(), x=x, y=y, by=by, reference=reference)

@@ -57,6 +57,7 @@ show_missing = true
 skip_covered = true
 exclude_also = [
     "from typing_extensions import",
+    "assert False, 'unreachable'",
 ]
 
 [tool.pytest]

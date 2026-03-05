@@ -12,6 +12,13 @@ matplotlib.use('Agg')  # Non-interactive backend
 from zeropybench import BenchmarkPlotter
 
 
+@pytest.fixture(autouse=True)
+def close_figures():
+    """Close all matplotlib figures after each test to avoid memory warnings."""
+    yield
+    matplotlib.pyplot.close('all')
+
+
 @pytest.fixture
 def simple_df() -> pl.DataFrame:
     """Simple benchmark DataFrame with one integer column."""
@@ -234,7 +241,7 @@ def test_legend_partitioning(multidimensional_df: pl.DataFrame, tmp_path: Path):
 def test_time_units_in_ylabel(simple_df: pl.DataFrame):
     """Test that time units appear in y-axis label."""
     for unit in ['ns', 'µs', 'ms', 's']:
-        plotter = BenchmarkPlotter(simple_df, unit)  # type: ignore[arg-type]
+        plotter = BenchmarkPlotter(simple_df, display_time_units=unit)  # type: ignore[arg-type]
         fig = plotter.create_figure()
         ax = fig.axes[0]
         assert unit in ax.get_ylabel()
@@ -261,3 +268,74 @@ def test_show(simple_df: pl.DataFrame, monkeypatch):
     plotter.show()
 
     assert len(show_called) == 1
+
+
+def test_reference_creates_two_columns(multidimensional_df: pl.DataFrame, tmp_path: Path):
+    """Test that reference parameter creates a second column of subplots."""
+    plotter = BenchmarkPlotter(multidimensional_df, reference='method=sum')
+    fig = plotter.create_figure()
+    # Should have 2 axes: left (time) and right (speedup)
+    assert len(fig.axes) == 2
+
+    path = tmp_path / 'results.png'
+    fig.savefig(path)
+    assert path.exists()
+
+
+def test_reference_with_by(multidimensional_df: pl.DataFrame, tmp_path: Path):
+    """Test reference with by parameter creates multiple rows of two columns."""
+    # Add another dimension for 'by'
+    df = pl.DataFrame(
+        {
+            'n': [10, 10, 100, 100, 10, 10, 100, 100],
+            'method': ['sum', 'len', 'sum', 'len', 'sum', 'len', 'sum', 'len'],
+            'device': ['cpu', 'cpu', 'cpu', 'cpu', 'gpu', 'gpu', 'gpu', 'gpu'],
+            'execution_times': [
+                [1.0, 1.1],
+                [0.5, 0.6],
+                [10.0, 10.1],
+                [0.5, 0.6],
+                [0.5, 0.6],
+                [0.3, 0.4],
+                [5.0, 5.1],
+                [0.3, 0.4],
+            ],
+            'median_execution_time': [1.05, 0.55, 10.05, 0.55, 0.55, 0.35, 5.05, 0.35],
+        }
+    )
+    plotter = BenchmarkPlotter(df, by='device', reference='method=sum')
+    fig = plotter.create_figure()
+    # Should have 4 axes: 2 rows x 2 columns
+    assert len(fig.axes) == 4
+
+    path = tmp_path / 'results.png'
+    fig.savefig(path)
+    assert path.exists()
+
+
+def test_reference_not_found(multidimensional_df: pl.DataFrame):
+    """Test that invalid reference raises ValueError."""
+    plotter = BenchmarkPlotter(multidimensional_df, reference='method=nonexistent')
+    with pytest.raises(ValueError, match='Reference.*not found'):
+        plotter.create_figure()
+
+
+def test_reference_speedup_values(multidimensional_df: pl.DataFrame):
+    """Test that speedup is computed correctly (reference / method)."""
+    plotter = BenchmarkPlotter(multidimensional_df, reference='method=sum')
+    fig = plotter.create_figure()
+
+    # The right subplot should have speedup values
+    ax_right = fig.axes[1]
+    # Check that ylabel contains 'Speedup'
+    assert 'Speedup' in ax_right.get_ylabel()
+
+
+def test_reference_right_yaxis(multidimensional_df: pl.DataFrame):
+    """Test that the right subplot has y-axis on the right side."""
+    plotter = BenchmarkPlotter(multidimensional_df, reference='method=sum')
+    fig = plotter.create_figure()
+
+    ax_right = fig.axes[1]
+    # Check that y-axis label is on the right
+    assert ax_right.yaxis.get_label_position() == 'right'

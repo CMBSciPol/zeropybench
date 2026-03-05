@@ -30,17 +30,22 @@ class BenchmarkPlotter:
         display_time_units: The time units to be used for display (automatically inferred by default).
         x: The x-axis, as a column name or Polars expression.
         y: The y-axis, as a column name or Polars expression.
-        by: Key(s) to divide into several subplots.
+        by: Key(s) to divide into several subplot rows.
+        reference: Legend label of the reference method for speedup comparison.
+            When specified, a second column of subplots shows the speedup
+            (reference_time / method_time) for each method. Values > 1 mean
+            faster than the reference.
     """
 
     def __init__(
         self,
         df: pl.DataFrame,
-        display_time_units: TimeUnitType | Literal['us'] | None = None,
         *,
+        display_time_units: TimeUnitType | Literal['us'] | None = None,
         x: str | pl.Expr | None = None,
         y: str | pl.Expr | None = None,
         by: str | Sequence[str] | None = None,
+        reference: str | None = None,
     ) -> None:
         if display_time_units is None:
             display_time_units = get_optimal_time_units(df['median_execution_time'])
@@ -64,6 +69,7 @@ class BenchmarkPlotter:
         self.x = self._normalize_x(x, df)
         self.y = self._normalize_expr(y)
         self.by = self._normalize_by(by)
+        self.reference = reference
 
         self._validate_columns()
 
@@ -133,33 +139,58 @@ class BenchmarkPlotter:
             plot_partitions = {(): self.df}
 
         nsubplot = len(plot_partitions)
+        ncols = 2 if self.reference else 1
         fig: matplotlib.figure.Figure
         subplots_keywords.setdefault('sharex', True)
-        fig, axs = mp.subplots(nsubplot, **subplots_keywords)
-        if nsubplot == 1:
+        fig, axs = mp.subplots(nsubplot, ncols, **subplots_keywords)
+        if nsubplot == 1 and ncols == 1:
+            axs = ((axs,),)
+        elif nsubplot == 1:
             axs = (axs,)
-        else:
-            fig.subplots_adjust(hspace=0)
+        elif ncols == 1:
+            axs = tuple((ax,) for ax in axs)
+        if nsubplot > 1 or ncols > 1:
+            fig.subplots_adjust(hspace=0, wspace=0.05 if ncols > 1 else None)
 
         xlabel = self.x.meta.output_name()
         ylabel_base = f'{self.y.meta.output_name()} [{self.display_time_units}]'
+        ratio_ylabel_base = f'Speedup vs {self.reference}'
 
-        for i, ((plot_keys, plot_partition), ax) in enumerate(zip(plot_partitions.items(), axs)):
+        for i, ((plot_keys, plot_partition), ax_row) in enumerate(
+            zip(plot_partitions.items(), axs)
+        ):
             show_xlabel = i == nsubplot - 1
             if plot_keys:
                 by_label = ', '.join(f'{k}: {v}' for k, v in zip(self.by, plot_keys))
                 ylabel = f'{by_label}\n{ylabel_base}'
+                ratio_ylabel = f'{by_label}\n{ratio_ylabel_base}'
             else:
                 ylabel = ylabel_base
-            self._draw_subplot(
-                ax,
+                ratio_ylabel = ratio_ylabel_base
+
+            ax_left = ax_row[0]
+            colors = self._draw_subplot(
+                ax_left,
                 plot_partition,
                 xlabel=xlabel if show_xlabel else '',
                 ylabel=ylabel,
                 legend_by=legend_by,
             )
             if not show_xlabel:
-                ax.tick_params(labelbottom=False)
+                ax_left.tick_params(labelbottom=False)
+
+            if self.reference:
+                ax_right = ax_row[1]
+                self._draw_speedup_subplot(
+                    ax_right,
+                    plot_partition,
+                    xlabel=xlabel if show_xlabel else '',
+                    ylabel=ratio_ylabel,
+                    legend_by=legend_by,
+                    colors=colors,
+                )
+                if not show_xlabel:
+                    ax_right.tick_params(labelbottom=False)
 
         return fig
 
@@ -171,8 +202,8 @@ class BenchmarkPlotter:
         xlabel: str,
         ylabel: str,
         legend_by: list[str],
-    ) -> None:
-        """Draw a single subplot."""
+    ) -> dict[tuple[Any, ...], Any]:
+        """Draw a single subplot and return the colors used for each legend key."""
         ax.set(xlabel=xlabel, ylabel=ylabel)
 
         if legend_by:
@@ -180,11 +211,13 @@ class BenchmarkPlotter:
         else:
             legend_partitions = {(): df}
 
+        colors: dict[tuple[Any, ...], Any] = {}
         for legend_keys, legend_partition in legend_partitions.items():
             x_values = legend_partition.select(self.x).to_series()
             y_values = legend_partition.select(self.y).to_series()
             label = ', '.join(f'{k}={v}' for k, v in zip(legend_by, legend_keys))
-            ax.loglog(x_values, y_values, marker='.', label=label if label else None)
+            (line,) = ax.loglog(x_values, y_values, marker='.', label=label if label else None)
+            colors[legend_keys] = line.get_color()
 
         ax.xaxis.set_major_formatter(_format_x_tick)
         ax.yaxis.set_major_locator(ticker.LogLocator(subs=(1, 2, 5)))
@@ -192,6 +225,66 @@ class BenchmarkPlotter:
 
         if legend_by:
             ax.legend()
+
+        return colors
+
+    def _draw_speedup_subplot(
+        self,
+        ax: Axes,
+        df: pl.DataFrame,
+        *,
+        xlabel: str,
+        ylabel: str,
+        legend_by: list[str],
+        colors: dict[tuple[Any, ...], Any],
+    ) -> None:
+        """Draw a ratio subplot comparing all legend items to the reference."""
+        ax.set(xlabel=xlabel, ylabel=ylabel)
+
+        if legend_by:
+            legend_partitions = df.partition_by(legend_by, maintain_order=True, as_dict=True)
+        else:
+            assert False, 'unreachable'
+
+        # Find the reference partition
+        reference_key = None
+        for legend_keys in legend_partitions:
+            label = ', '.join(f'{k}={v}' for k, v in zip(legend_by, legend_keys))
+            if label == self.reference or (
+                len(legend_keys) == 1 and legend_keys[0] == self.reference
+            ):
+                reference_key = legend_keys
+                break
+
+        if reference_key is None:
+            raise ValueError(f'Reference "{self.reference}" not found in legend keys.')
+
+        reference_partition = legend_partitions[reference_key]
+        ref_x = reference_partition.select(self.x).to_series()
+        ref_y = reference_partition.select(self.y).to_series()
+        # Create a mapping from x to y for the reference
+        ref_mapping = dict(zip(ref_x, ref_y))
+
+        for legend_keys, legend_partition in legend_partitions.items():
+            x_values = legend_partition.select(self.x).to_series()
+            y_values = legend_partition.select(self.y).to_series()
+            # Compute speedup (reference / method), so > 1 means faster than reference
+            ratios = [ref_mapping.get(x, float('nan')) / y for x, y in zip(x_values, y_values)]
+            label = ', '.join(f'{k}={v}' for k, v in zip(legend_by, legend_keys))
+            ax.semilogx(
+                x_values,
+                ratios,
+                marker='.',
+                label=label if label else None,
+                color=colors[legend_keys],
+            )
+
+        ax.xaxis.set_major_formatter(_format_x_tick)
+        ax.axhline(y=1, color='gray', linestyle='--', linewidth=0.8)
+
+        # Move y-axis to the right
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position('right')
 
     def show(self, **subplots_keywords: Any) -> None:
         """Display the plot interactively.
