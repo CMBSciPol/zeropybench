@@ -77,8 +77,7 @@ class CodeASTParser:
             bench_func = jax.jit(self._create_bench_func(args, combined))
 
         new_globals = combined | {'__bench_func': bench_func, 'jax': jax}
-        new_code = f"""__rv = __bench_func({', '.join(args)})
-jax.block_until_ready(__rv)"""
+        new_code = f'__rv = __bench_func({", ".join(args)})\n{{block_code}}'
         return new_code, new_globals
 
     def _is_simple_jitted_call(self, combined: dict[str, Any]) -> bool:

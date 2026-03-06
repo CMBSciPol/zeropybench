@@ -84,7 +84,7 @@ When JAX code is detected, zeropybench:
 1. **Wraps the code in a JIT-compiled function** to measure optimized execution
 2. **Separates compilation from execution** by reporting `compilation_time` separately
 3. **Captures the StableHLO representation** of the compiled function in the `hlo` field
-4. **Uses `jax.block_until_ready`** to ensure accurate timing of asynchronous operations
+4. **Uses ``block_until_ready``** to ensure accurate timing of asynchronous operations
 
 The benchmark report includes additional fields for JAX:
 - `first_execution_time`: Time of the initial (possibly uncompiled) execution

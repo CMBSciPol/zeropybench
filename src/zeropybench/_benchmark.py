@@ -112,7 +112,11 @@ class Benchmark:
         if is_jax:
             parser = CodeASTParser.from_code(code)
             code, globals = parser.transform_jax_code(f_locals, f_globals)
-            hlo, compilation_time = self._compile_jax(globals)
+            hlo, compilation_time, is_single_array = self._compile_jax(globals)
+            block_code = (
+                '__rv.block_until_ready()' if is_single_array else 'jax.block_until_ready(__rv)'
+            )
+            code = code.format(block_code=block_code)
             is_jax_keywords = {
                 'first_execution_time': first_time,
                 'compilation_time': compilation_time,
@@ -191,8 +195,14 @@ class Benchmark:
             raise ImportError('The library JAX is installed but not jaxlib...')
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
-    def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float]:
-        """Compile the JAX function and return the HLO and compilation time in seconds."""
+    def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float, bool]:
+        """Compile the JAX function and return HLO, compilation time, and output type info.
+
+        Returns:
+            A tuple (hlo, compilation_time, is_single_array) where is_single_array
+            indicates whether the output is a single JAX array (vs tuple/pytree).
+        """
+        jax = sys.modules['jax']
         bench_func = globals['__bench_func']
         param_names = list(inspect.signature(bench_func).parameters.keys())
         arg_values = [globals[name] for name in param_names]
@@ -203,7 +213,8 @@ class Benchmark:
         compilation_time = time.perf_counter() - start_time
 
         hlo = compiled.as_text()
-        return hlo, compilation_time
+        is_single_array = isinstance(compiled.out_info, jax.ShapeDtypeStruct)
+        return hlo, compilation_time, is_single_array
 
     def _run_many_times(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
