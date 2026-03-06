@@ -4061,7 +4061,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-cuda12 = [{ name = "jax", extras = ["cuda12"], specifier = ">=0.4" }]
+cuda12 = [{ name = "jax", extras = ["cuda12"], specifier = ">=0.6" }]
 cuda13 = [{ name = "jax", extras = ["cuda13"], marker = "python_full_version >= '3.11'", specifier = ">=0.7" }]
 dev = [
     { name = "furo", specifier = ">=2024.0.0" },

@@ -213,7 +213,7 @@ class Benchmark:
         compilation_time = time.perf_counter() - start_time
 
         hlo = compiled.as_text()
-        is_single_array = isinstance(compiled.out_info, jax.ShapeDtypeStruct)
+        is_single_array = isinstance(lowered.out_info, jax.ShapeDtypeStruct)
         return hlo, compilation_time, is_single_array
 
     def _run_many_times(
