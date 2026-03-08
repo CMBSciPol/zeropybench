@@ -141,7 +141,6 @@ class BenchmarkPlotter:
         nsubplot = len(plot_partitions)
         ncols = 2 if self.reference else 1
         fig: matplotlib.figure.Figure
-        subplots_keywords.setdefault('sharex', True)
         fig, axs = mp.subplots(nsubplot, ncols, **subplots_keywords)
         if nsubplot == 1 and ncols == 1:
             axs = ((axs,),)
@@ -176,8 +175,7 @@ class BenchmarkPlotter:
                 ylabel=ylabel,
                 legend_by=legend_by,
             )
-            if not show_xlabel:
-                ax_left.tick_params(labelbottom=False)
+            ax_left.xaxis.set_tick_params(which='both', direction='in', labelbottom=show_xlabel)
 
             if self.reference:
                 ax_right = ax_row[1]
@@ -189,8 +187,9 @@ class BenchmarkPlotter:
                     legend_by=legend_by,
                     colors=colors,
                 )
-                if not show_xlabel:
-                    ax_right.tick_params(labelbottom=False)
+                ax_right.xaxis.set_tick_params(
+                    which='both', direction='in', labelbottom=show_xlabel
+                )
 
         return fig
 
