@@ -182,8 +182,29 @@ class Benchmark:
             # Use linecache for special files (<...>, ipykernel temp files, etc.)
             # linecache handles both regular files and IPython/Jupyter execution
             text = ''.join(linecache.getlines(filename))
+            if not text and filename == '<string>':
+                # Handle python -c: get code from /proc/self/cmdline on Linux
+                text = self._get_code_from_cmdline()
             self._cache[filename] = text
         return text.splitlines()
+
+    @staticmethod
+    def _get_code_from_cmdline() -> str:
+        """Get Python code passed via 'python -c' from /proc/self/cmdline."""
+        cmdline_path = Path('/proc/self/cmdline')
+        if not cmdline_path.exists():
+            raise RuntimeError(
+                "Cannot read source code: '/proc/self/cmdline' does not exist. "
+                "Benchmarking code passed via 'python -c' is only supported on Linux."
+            )
+        cmdline = cmdline_path.read_bytes().decode().split('\x00')
+        if '-c' not in cmdline:
+            raise RuntimeError(
+                "Cannot read source code: '-c' flag not found in command line. "
+                "This is unexpected when the source file is '<string>'."
+            )
+        idx = cmdline.index('-c')
+        return cmdline[idx + 1]
 
     def _is_jax_context(self, locals: dict[str, Any]) -> bool:
         """Returns true if a variable in the with context is a JAX array."""
@@ -192,7 +213,7 @@ class Benchmark:
             return False
         jaxlib = sys.modules.get('jaxlib')
         if jaxlib is None:
-            raise ImportError('The library JAX is installed but not jaxlib...')
+            raise ImportError('The library JAX is installed but not jaxlib...')  # pragma: nocover
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
     def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float, bool]:

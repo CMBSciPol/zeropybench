@@ -206,3 +206,52 @@ def test_plot(mocker: MockerFixture):
     bench.plot()
 
     mock_show.assert_called_once()
+
+
+def test_get_code_from_cmdline_no_c_flag():
+    """Test _get_code_from_cmdline raises error when -c flag is not present."""
+    import pytest
+
+    # This test only works on Linux
+    cmdline_path = Path('/proc/self/cmdline')
+    if not cmdline_path.exists():
+        return
+
+    # When running via pytest, there's no -c flag
+    with pytest.raises(RuntimeError, match='-c.*flag not found'):
+        Benchmark._get_code_from_cmdline()
+
+
+def test_get_code_from_cmdline_not_linux(mocker: MockerFixture):
+    """Test _get_code_from_cmdline raises error on non-Linux systems."""
+    import pytest
+
+    mocker.patch('zeropybench._benchmark.Path.exists', return_value=False)
+
+    with pytest.raises(RuntimeError, match='only supported on Linux'):
+        Benchmark._get_code_from_cmdline()
+
+
+def test_get_code_from_cmdline_extracts_code(mocker: MockerFixture):
+    """Test _get_code_from_cmdline extracts code after -c flag."""
+    code = 'print("hello")'
+    cmdline = f'python\x00-c\x00{code}\x00'.encode()
+
+    mocker.patch('zeropybench._benchmark.Path.exists', return_value=True)
+    mocker.patch('zeropybench._benchmark.Path.read_bytes', return_value=cmdline)
+
+    result = Benchmark._get_code_from_cmdline()
+    assert result == code
+
+
+def test_get_lines_calls_get_code_from_cmdline(mocker: MockerFixture):
+    """Test _get_lines calls _get_code_from_cmdline for '<string>' filename."""
+    code = 'x = 1\ny = 2'
+    mock_cmdline = mocker.patch.object(Benchmark, '_get_code_from_cmdline', return_value=code)
+    mocker.patch('zeropybench._benchmark.linecache.getlines', return_value=[])
+
+    bench = Benchmark()
+    lines = bench._get_lines('<string>')
+
+    mock_cmdline.assert_called_once()
+    assert lines == ['x = 1', 'y = 2']
