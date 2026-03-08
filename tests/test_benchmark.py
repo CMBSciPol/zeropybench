@@ -10,7 +10,7 @@ from zeropybench import Benchmark
 
 def test_basic_benchmark():
     """Test basic benchmark functionality."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='sum'):
         sum(range(100))
@@ -24,7 +24,7 @@ def test_basic_benchmark():
 
 def test_multiple_benchmarks():
     """Test multiple benchmarks with different parameters."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(n=10):
         sum(range(10))
@@ -39,7 +39,7 @@ def test_multiple_benchmarks():
 
 def test_multidimensional_keywords():
     """Test benchmarks with multiple keyword arguments."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(method='sum', size=100, variant='a'):
         sum(range(100))
@@ -52,7 +52,7 @@ def test_multidimensional_keywords():
 
 def test_multiline_code():
     """Test benchmark with multiple statements."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='multiline'):
         x = list(range(100))
@@ -65,7 +65,7 @@ def test_multiline_code():
 
 def test_execution_times_are_positive():
     """Test that all execution times are positive."""
-    bench = Benchmark(repeat=5, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=5, min_duration_per_repeat=0.01)
 
     with bench(name='test'):
         sum(range(1000))
@@ -84,7 +84,7 @@ def test_empty_benchmark():
 
 def test_local_variables():
     """Test benchmark with local variables."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     data = list(range(100))
     multiplier = 2
@@ -99,7 +99,7 @@ def test_local_variables():
 
 def test_local_variables_in_loop():
     """Test benchmark with local variables inside a loop."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     for n in [10, 100]:
         with bench(n=n):
@@ -112,7 +112,7 @@ def test_local_variables_in_loop():
 
 def test_repr():
     """Test __repr__ returns a string table."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='test'):
         sum(range(100))
@@ -126,7 +126,7 @@ def test_repr():
 
 def test_write_csv(tmp_path: Path):
     """Test writing benchmark to CSV."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='test', n=100):
         sum(range(100))
@@ -141,7 +141,7 @@ def test_write_csv(tmp_path: Path):
 
 def test_write_parquet(tmp_path: Path):
     """Test writing benchmark to Parquet."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='test', n=100):
         sum(range(100))
@@ -156,7 +156,7 @@ def test_write_parquet(tmp_path: Path):
 
 def test_write_markdown(tmp_path: Path):
     """Test writing benchmark to Markdown."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='test', n=100):
         sum(range(100))
@@ -171,7 +171,7 @@ def test_write_markdown(tmp_path: Path):
 
 def test_write_markdown_with_string_path(tmp_path: Path):
     """Test writing benchmark to Markdown with string path."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(name='test'):
         sum(range(100))
@@ -183,7 +183,7 @@ def test_write_markdown_with_string_path(tmp_path: Path):
 
 def test_repeat_two():
     """Test benchmark with repeat=2 (minimum for statistics.quantiles)."""
-    bench = Benchmark(repeat=2, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=2, min_duration_per_repeat=0.01)
 
     with bench(name='test'):
         sum(range(100))
@@ -194,7 +194,7 @@ def test_repeat_two():
 
 def test_plot(mocker: MockerFixture):
     """Test plot method calls plotter.show()."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     with bench(n=10):
         sum(range(10))

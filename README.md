@@ -121,7 +121,7 @@ bench.write_plot('results.pdf')
 ```python
 Benchmark(
     repeat=7,                    # Number of measurement repetitions
-    min_duration_of_repeat=0.2,  # Minimum duration per repeat (seconds)
+    min_duration_per_repeat=0.2,  # Minimum duration per repeat (seconds)
 )
 ```
 

@@ -156,7 +156,7 @@ def test_multiple_statements() -> None:
 
 def test_benchmark_jax_context():
     """Test full JAX benchmark context with HLO and compilation time."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     x = jnp.array([1, 2, 3])
     y = jnp.array([4, 5, 6])
@@ -182,7 +182,7 @@ def test_benchmark_jax_context():
 
 def test_benchmark_jax_jitted_function():
     """Test JAX benchmark with already jitted function."""
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     @jax.jit
     def add_arrays(x, y):
@@ -205,7 +205,7 @@ def test_benchmark_jax_plot(tmp_path):
 
     matplotlib.use('Agg')
 
-    bench = Benchmark(repeat=3, min_duration_of_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
 
     for n in [10, 100]:
         x = jnp.ones(n)

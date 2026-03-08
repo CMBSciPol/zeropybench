@@ -60,7 +60,7 @@ class Benchmark:
         Attributes:
             repeat: The number of times the estimation of the elapsed time will be performed. Each
                 repeat will usually execute the benchmarked code many times.
-            min_duration_of_repeat: The minimum duration of one repeat, in seconds. The function will be
+            min_duration_per_repeat: The minimum duration of one repeat, in seconds. The function will be
                 executed as many times as it is necessary so that the total execution time is greater
                 than this value. The execution time for this repeat is the mean value of the execution
                 times.
@@ -75,20 +75,20 @@ class Benchmark:
         self,
         *,
         repeat: int = 7,
-        min_duration_of_repeat: float = 0.2,
+        min_duration_per_repeat: float = 0.2,
     ) -> None:
         """Returns a Benchmark instance.
 
         Args:
             repeat: The number of times the estimation of the elapsed time will be performed. Each
                 repeat will usually execute the benchmarked code many times.
-            min_duration_of_repeat: The minimum duration of one repeat, in seconds. The function
+            min_duration_per_repeat: The minimum duration of one repeat, in seconds. The function
                 will be executed as many times as necessary so that the total execution time is
                 greater than this value. The execution time for this repeat is the mean value of
                 the execution times.
         """
         self.repeat = repeat
-        self.min_duration_of_repeat = min_duration_of_repeat
+        self.min_duration_per_repeat = min_duration_per_repeat
         self._report: list[dict[str, ValidBenchmarkType]] = []
         self._cache: dict[str, str] = {}
 
@@ -237,15 +237,15 @@ class Benchmark:
     def _autorange(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
     ) -> tuple[int, float]:
-        """Returns the number of loops so that total time is greater than min_duration_of_repeat.
+        """Returns the number of loops so that total time is greater than min_duration_per_repeat.
 
         Calls the timeit method with increasing numbers from the sequence
-        1, 2, 5, 10, 20, 50, ... until the time taken is at least min_duration_of_repeat
+        1, 2, 5, 10, 20, 50, ... until the time taken is at least min_duration_per_repeat
         Returns (number, time_taken_in_seconds).
 
         Adapted from the timeit module.
         """
-        if first_time >= self.min_duration_of_repeat:
+        if first_time >= self.min_duration_per_repeat:
             return 1, first_time
 
         timer = timeit.Timer(func, globals=globals)
@@ -257,7 +257,7 @@ class Benchmark:
                     continue
                 number = i * j
                 time_taken = timer.timeit(number)
-                if time_taken >= self.min_duration_of_repeat:
+                if time_taken >= self.min_duration_per_repeat:
                     return number, time_taken
             i *= 10
 
