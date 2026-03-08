@@ -298,6 +298,9 @@ class Benchmark:
 
     def to_dataframe(self) -> pl.DataFrame:
         """Returns the benchmark as a Polars dataframe with times in seconds."""
+        if not self._report:
+            schema = {'median_execution_time': pl.Float64(), 'execution_times': pl.List(pl.Float64)}
+            return pl.DataFrame({'median_execution_time': [], 'execution_times': []}, schema=schema)
         return pl.DataFrame(self._report)
 
     def _to_display_dataframe(self) -> pl.DataFrame:
@@ -317,9 +320,9 @@ class Benchmark:
 
         if not self._report:
             return df.select(
-                pl.exclude(excluded_columns),
+                'median_execution_time',
                 pl.lit(None, pl.Float64).alias('± (%)'),
-                *extra_columns,
+                'execution_times',
             )
 
         units = get_optimal_time_units(df['median_execution_time'])

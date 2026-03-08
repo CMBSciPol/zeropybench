@@ -82,6 +82,14 @@ def test_empty_benchmark():
     assert len(df) == 0
 
 
+def test_empty_benchmark_display_dataframe():
+    """Test _to_display_dataframe returns empty dataframe with correct columns."""
+    bench = Benchmark()
+    df = bench._to_display_dataframe()
+    assert len(df) == 0
+    assert '± (%)' in df.columns
+
+
 def test_local_variables():
     """Test benchmark with local variables."""
     bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
