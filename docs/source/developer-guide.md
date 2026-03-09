@@ -4,7 +4,7 @@
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/pchanial/zeropybench.git
+git clone https://github.com/CMBSciPol/zeropybench.git
 cd zeropybench
 ```
 

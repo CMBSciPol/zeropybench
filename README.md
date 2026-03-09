@@ -1,14 +1,14 @@
 <div align="center">
-<img src="https://raw.githubusercontent.com/pchanial/zeropybench/main/docs/source/_static/logo.svg" alt="zeropybench" width="100%">
+<img src="https://raw.githubusercontent.com/CMBSciPol/zeropybench/main/docs/source/_static/logo.svg" alt="zeropybench" width="100%">
 </div>
 
 
-# Zero-overhead Python Benchmarking
+# Zero-overhead Python and JAX Reliable Benchmarking
 
 [![PyPI version](https://img.shields.io/pypi/v/zeropybench?color=%232EBF4F)](https://pypi.org/project/zeropybench)
 [![Python versions](https://img.shields.io/pypi/pyversions/zeropybench.svg?color=%232EBF4F)](https://pypi.org/project/zeropybench)
-[![Continuous integration](https://github.com/pchanial/zeropybench/actions/workflows/ci.yml/badge.svg)](https://github.com/pchanial/zeropybench/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/pchanial/zeropybench/graph/badge.svg)](https://codecov.io/gh/pchanial/zeropybench)
+[![Continuous integration](https://github.com/CMBSciPol/zeropybench/actions/workflows/ci.yml/badge.svg)](https://github.com/CMBSciPol/zeropybench/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/CMBSciPol/zeropybench/graph/badge.svg)](https://codecov.io/gh/CMBSciPol/zeropybench)
 
 <!-- Start common text with source/index.md -->
 

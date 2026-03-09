@@ -15,7 +15,7 @@ pip install zeropybench
 ## Install from Source
 
 ```bash
-git clone https://github.com/pchanial/zeropybench.git
+git clone https://github.com/CMBSciPol/zeropybench.git
 cd zeropybench
 pip install .
 ```
@@ -25,7 +25,7 @@ pip install .
 For development, install with the `dev` dependency group:
 
 ```bash
-git clone https://github.com/pchanial/zeropybench.git
+git clone https://github.com/CMBSciPol/zeropybench.git
 cd zeropybench
 pip install --group dev .
 ```
