@@ -9,11 +9,8 @@
    :show-inheritance:
 ```
 
-## BenchmarkPlotter
+## read_benchmark
 
 ```{eval-rst}
-.. autoclass:: zeropybench.BenchmarkPlotter
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. autofunction:: zeropybench.read_benchmark
 ```

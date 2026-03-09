@@ -9,7 +9,7 @@ from polars.testing import assert_frame_equal
 
 matplotlib.use('Agg')  # Non-interactive backend
 
-from zeropybench import BenchmarkPlotter
+from zeropybench._plot import BenchmarkPlotter
 
 
 @pytest.fixture(autouse=True)
