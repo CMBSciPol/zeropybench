@@ -12,12 +12,12 @@ from typing import Any, ClassVar
 
 import polars as pl
 
+from ._io import BenchmarkReader, BenchmarkWriter
 from ._jax import CodeASTParser
 from ._plot import BenchmarkPlotter
+from ._units import get_optimal_time_units, to_units
 
 __all__ = ['Benchmark', 'read_benchmark']
-
-from ._units import get_optimal_time_units, to_units
 
 ValidBenchmarkType = bool | int | float | str | list[float]
 
@@ -357,22 +357,7 @@ class Benchmark:
         Args:
             path: The path of the CSV file.
         """
-        if not isinstance(path, Path):
-            path = Path(path)
-        csv_content = (
-            self.to_dataframe()
-            .with_columns(
-                execution_times='['
-                + pl.col('execution_times').cast(pl.List(pl.String)).list.join(', ')
-                + ']'
-            )
-            .write_csv()
-        )
-        header = (
-            f'# repeat = {self.repeat}\n'
-            f'# min_duration_per_repeat = {self.min_duration_per_repeat}\n'
-        )
-        path.write_text(header + csv_content)
+        self._create_writer().write_csv(path)
 
     def write_parquet(self, path: Path | str) -> None:
         """Writes the benchmark report as Parquet.
@@ -384,12 +369,7 @@ class Benchmark:
         Args:
             path: The path of the Parquet file.
         """
-        df = self.to_dataframe()
-        metadata = {
-            'repeat': str(self.repeat),
-            'min_duration_per_repeat': str(self.min_duration_per_repeat),
-        }
-        df.write_parquet(path, metadata=metadata)
+        self._create_writer().write_parquet(path)
 
     def write_markdown(self, path: Path | str) -> None:
         """Writes the benchmark report as MarkDown table.
@@ -397,14 +377,11 @@ class Benchmark:
         Args:
             path: The path of the MarkDown file.
         """
-        if not isinstance(path, Path):
-            path = Path(path)
-        with pl.Config(
-            tbl_formatting='ASCII_MARKDOWN',
-            tbl_hide_column_data_types=True,
-            tbl_hide_dataframe_shape=True,
-        ):
-            path.write_text(str(self.to_dataframe()))
+        self._create_writer().write_markdown(path)
+
+    def _create_writer(self) -> BenchmarkWriter:
+        """Create a BenchmarkWriter instance."""
+        return BenchmarkWriter(self.to_dataframe(), self.repeat, self.min_duration_per_repeat)
 
     def plot(
         self,
@@ -481,76 +458,8 @@ def read_benchmark(path: Path | str) -> Benchmark:
     Raises:
         ValueError: If the file extension is not .csv or .parquet.
     """
-    if not isinstance(path, Path):
-        path = Path(path)
-
-    suffix = path.suffix.lower()
-    if suffix == '.csv':
-        return _read_benchmark_csv(path)
-    elif suffix == '.parquet':
-        return _read_benchmark_parquet(path)
-    else:
-        raise ValueError(f'Unsupported file extension: {suffix}. Use .csv or .parquet.')
-
-
-def _read_benchmark_csv(path: Path) -> Benchmark:
-    """Read a benchmark from a CSV file with metadata header."""
-    content = path.read_text()
-    lines = content.split('\n')
-
-    # Parse metadata from header comments
-    repeat = Benchmark.DEFAULT_REPEAT
-    min_duration_per_repeat = Benchmark.DEFAULT_MIN_DURATION_PER_REPEAT
-    data_start = 0
-
-    for i, line in enumerate(lines):
-        if line.startswith('# '):
-            if '=' in line:
-                key, value = line[2:].split('=', 1)
-                key = key.strip()
-                value = value.strip()
-                if key == 'repeat':
-                    repeat = int(value)
-                elif key == 'min_duration_per_repeat':
-                    min_duration_per_repeat = float(value)
-            data_start = i + 1
-        else:
-            break
-
-    # Read the CSV data
-    csv_content = '\n'.join(lines[data_start:])
-    df = pl.read_csv(csv_content.encode())
-
-    # Parse execution_times from string back to list
-    if 'execution_times' in df.columns:
-        df = df.with_columns(
-            pl.col('execution_times')
-            .str.strip_chars('[]')
-            .str.split(', ')
-            .list.eval(pl.element().cast(pl.Float64))
-        )
-
-    return _create_benchmark_from_dataframe(df, repeat, min_duration_per_repeat)
-
-
-def _read_benchmark_parquet(path: Path) -> Benchmark:
-    """Read a benchmark from a Parquet file with metadata."""
-    metadata = pl.read_parquet_metadata(path)
-
-    repeat = int(metadata.get('repeat', str(Benchmark.DEFAULT_REPEAT)))
-    min_duration_per_repeat = float(
-        metadata.get('min_duration_per_repeat', str(Benchmark.DEFAULT_MIN_DURATION_PER_REPEAT))
-    )
-
-    df = pl.read_parquet(path)
-
-    return _create_benchmark_from_dataframe(df, repeat, min_duration_per_repeat)
-
-
-def _create_benchmark_from_dataframe(
-    df: pl.DataFrame, repeat: int, min_duration_per_repeat: float
-) -> Benchmark:
-    """Create a Benchmark instance from a DataFrame and metadata."""
+    reader = BenchmarkReader(Benchmark.DEFAULT_REPEAT, Benchmark.DEFAULT_MIN_DURATION_PER_REPEAT)
+    df, repeat, min_duration_per_repeat = reader.read(path)
     bench = Benchmark(repeat=repeat, min_duration_per_repeat=min_duration_per_repeat)
     bench._report = df.to_dicts()
     return bench
