@@ -151,7 +151,7 @@ class Benchmark:
         record: dict[str, ValidBenchmarkType] = {
             **keywords,
             'median_execution_time': median,
-            'execution_times': sorted(execution_times),
+            'execution_times': execution_times,
         }
         record.update(is_jax_keywords)  # type: ignore[arg-type]
         self._report.append(record)
