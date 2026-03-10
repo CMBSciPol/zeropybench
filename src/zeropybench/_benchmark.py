@@ -235,7 +235,6 @@ class Benchmark:
             A tuple (hlo, compilation_time, is_single_array) where is_single_array
             indicates whether the output is a single JAX array (vs tuple/pytree).
         """
-        jax = sys.modules['jax']
         bench_func = globals['__bench_func']
         arg_values = [globals[name] for name in param_names]
 
@@ -245,7 +244,7 @@ class Benchmark:
         compilation_time = time.perf_counter() - start_time
 
         hlo = compiled.as_text()
-        is_single_array = isinstance(lowered.out_info, jax.ShapeDtypeStruct)
+        is_single_array = lowered.out_tree.num_leaves == 1
         return hlo, compilation_time, is_single_array
 
     def _run_many_times(
