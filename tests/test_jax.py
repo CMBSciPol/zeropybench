@@ -47,6 +47,77 @@ def test_is_jax_context(var_names: list[str], expected: bool) -> None:
     assert parser.is_jax_context() == expected
 
 
+@pytest.mark.parametrize(
+    'pytree, expected',
+    [
+        # Standard pytrees containing jax.Array
+        ((jnp.array([1]), jnp.array([2])), True),  # tuple of jax.Array
+        ([jnp.array([1]), jnp.array([2])], True),  # list of jax.Array
+        ({'a': jnp.array([1]), 'b': jnp.array([2])}, True),  # dict of jax.Array
+        # Mixed pytrees
+        ((jnp.array([1]), np.array([2])), True),  # tuple with jax and numpy
+        ({'jax': jnp.array([1]), 'numpy': np.array([2])}, True),  # dict with jax and numpy
+        # No jax.Array
+        ((np.array([1]), np.array([2])), False),  # tuple of numpy arrays
+        ([1, 2, 3], False),  # plain list
+        ({'a': 1, 'b': 2}, False),  # dict of ints
+        ((), False),  # empty tuple
+        ([], False),  # empty list
+        ({}, False),  # empty dict
+    ],
+    ids=[
+        'tuple_of_jax',
+        'list_of_jax',
+        'dict_of_jax',
+        'tuple_mixed',
+        'dict_mixed',
+        'tuple_numpy_only',
+        'plain_list',
+        'dict_ints',
+        'empty_tuple',
+        'empty_list',
+        'empty_dict',
+    ],
+)
+def test_is_jax_context_pytrees(pytree: object, expected: bool) -> None:
+    """Test is_jax_context detection of JAX arrays in pytrees."""
+    globals_ = {'pytree': pytree}
+    parser = CodeASTParser.from_code('pytree', globals_)
+    assert parser.is_jax_context() == expected
+
+
+def test_is_jax_context_registered_dataclass() -> None:
+    """Test is_jax_context with dataclass registered via @jax.tree_util.register_dataclass."""
+    from dataclasses import dataclass
+
+    @jax.tree_util.register_dataclass
+    @dataclass
+    class State:
+        position: jax.Array
+        velocity: jax.Array
+
+    state = State(position=jnp.array([1.0, 2.0]), velocity=jnp.array([0.1, 0.2]))
+    globals_ = {'state': state}
+    parser = CodeASTParser.from_code('state', globals_)
+    assert parser.is_jax_context() is True
+
+
+def test_is_jax_context_dataclass_without_jax_arrays() -> None:
+    """Test is_jax_context with dataclass that doesn't contain JAX arrays."""
+    from dataclasses import dataclass
+
+    @jax.tree_util.register_dataclass
+    @dataclass
+    class Config:
+        learning_rate: float
+        batch_size: int
+
+    config = Config(learning_rate=0.01, batch_size=32)
+    globals_ = {'config': config}
+    parser = CodeASTParser.from_code('config', globals_)
+    assert parser.is_jax_context() is False
+
+
 def test_is_jax_context_no_jax(mocker: MockerFixture) -> None:
     """Test is_jax_context returns False when JAX is not imported."""
     mocker.patch.dict('sys.modules', {'jax': None})

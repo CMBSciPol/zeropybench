@@ -33,9 +33,19 @@ class CodeASTParser:
         names = self._collect_loaded_names()
         for name in names:
             obj = self.globals.get(name)
-            if obj is not None and (isinstance(obj, jax.Array) or self.is_jitted(obj)):
+            if obj is None:
+                continue
+            if self.is_jitted(obj):
+                return True
+            if self._contains_jax_arrays(obj, jax):
                 return True
         return False
+
+    @staticmethod
+    def _contains_jax_arrays(obj: Any, jax: Any) -> bool:
+        """Check if an object is a pytree containing JAX arrays."""
+        leaves = jax.tree.leaves(obj)
+        return any(isinstance(leaf, jax.Array) for leaf in leaves)
 
     def transform_jax_code(self) -> tuple[str, list[str], dict[str, Any]]:
         """Transform code into a benchmarkable jitted function call.
