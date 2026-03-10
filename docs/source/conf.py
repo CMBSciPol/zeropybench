@@ -88,3 +88,7 @@ nbsphinx_timeout = 300  # Timeout for notebook execution in seconds
 
 # Additional nbsphinx settings
 nbsphinx_execute_arguments = []
+
+
+def setup(app):
+    app.add_css_file('custom.css')

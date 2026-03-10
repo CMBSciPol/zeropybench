@@ -52,6 +52,10 @@ echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost
 echo 1 | sudo tee /sys/devices/system/cpu/cpufreq/boost
 ```
 
+:::{warning}
+These settings require root privileges and will be reset after reboot unless made persistent.
+:::
+
 ### CPU Isolation
 
 Isolate CPU cores to prevent the OS scheduler from interrupting your benchmark.
@@ -63,6 +67,10 @@ taskset -c 0-3 python benchmark.py
 ```
 
 **Boot-time isolation (more effective):**
+
+:::{warning}
+Modifying GRUB parameters incorrectly can prevent your system from booting. Always keep a backup boot option.
+:::
 
 Add to your kernel boot parameters in `/etc/default/grub`:
 ```
@@ -223,6 +231,10 @@ Before running benchmarks, verify:
 - [ ] Sufficient warm-up iterations have been run
 
 ## Interpreting Results
+
+:::{tip}
+Use `verbose=True` to inspect the actual code being benchmarked and verify it matches your expectations.
+:::
 
 Even with all optimizations, some variance is expected:
 

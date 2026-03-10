@@ -12,7 +12,7 @@
 
 <!-- Start common text with source/index.md -->
 
-**zeropybench** is a Python benchmarking library with zero overhead, designed for multidimensional performance analysis.
+**ZeroPyBench** is a Python benchmarking library with zero overhead, designed for multidimensional performance analysis.
 
 ## Features
 
@@ -88,7 +88,7 @@ Benchmarked code:
     __bench_func(x, y).block_until_ready()
 943.426 µs ± 3.98% (median of 20 runs, 500 loops each)
 ```
-When JAX code is detected, zeropybench:
+When JAX code is detected, ZeroPyBench:
 
 1. **Wraps the code in a JIT-compiled function** to measure optimized execution
 2. **Separates compilation from execution** by reporting `compilation_time` separately
@@ -131,7 +131,7 @@ bench.write_plot('results.pdf')
 Benchmark(
     repeat=7,                     # Number of measurement repetitions
     min_duration_per_repeat=0.2,  # Minimum duration per repeat (seconds)
-    verbose=True,                 # Print the rewritten benchmarked code
+    verbose=True,                 # Print the setup and benchmarked code
 )
 ```
 

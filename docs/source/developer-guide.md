@@ -96,19 +96,21 @@ The documentation uses:
 
 ```
 zeropybench/
-├── src/zeropybench/          # Main package
+├── src/zeropybench/        # Main package
 │   ├── __init__.py            # Public API exports
 │   ├── _benchmark.py          # Benchmark class
-│   └── _jax.py                # JAX code transformation utilities
-├── tests/                  # Test suite
-│   ├── test_benchmark.py      # Benchmark tests
-│   └── test_jax.py            # JAX-specific tests
+│   ├── _io.py                 # Read / write utilities
+│   ├── _jax.py                # JAX code transformation utilities
+│   ├── _plot.py               # Plotting utilities
+│   └── _units.py              # Unit conversion utilities
+├── tests/                  # Unit test suite
 ├── docs/                   # Documentation
 │   └── source/
 │       ├── user-guide/        # User guide and examples
 │       ├── api/               # API reference
 │       └── developer-guide.md # This file
 ├── .github/                # CI/CD workflows
+├── .pre-commit-config.yaml # Pre-commit hook configuration
 └── pyproject.toml          # Project configuration
 ```
 

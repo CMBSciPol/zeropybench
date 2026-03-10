@@ -29,9 +29,9 @@ user-guide/reliable-benchmarking
 
 ```{toctree}
 :maxdepth: 2
-:caption: API Reference
+:caption: Reference Guide
 
-api/index
+reference-guide
 ```
 
 ```{toctree}
