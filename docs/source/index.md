@@ -24,6 +24,7 @@ end-before: "<!-- End common text with source/index.md -->"
 user-guide/installation
 user-guide/getting-started
 user-guide/jax-examples
+user-guide/reliable-benchmarking
 ```
 
 ```{toctree}
