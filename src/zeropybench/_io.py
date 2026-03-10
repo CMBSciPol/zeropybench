@@ -25,16 +25,17 @@ class BenchmarkWriter:
         """
         if not isinstance(path, Path):
             path = Path(path)
-        csv_content = self.df.with_columns(
-            execution_times='['
-            + pl.col('execution_times').cast(pl.List(pl.String)).list.join(', ')
-            + ']'
-        ).write_csv()
         header = (
             f'# repeat = {self.repeat}\n'
             f'# min_duration_per_repeat = {self.min_duration_per_repeat}\n'
         )
-        path.write_text(header + csv_content)
+        with path.open('w') as stream:
+            stream.write(header)
+            self.df.with_columns(
+                execution_times='['
+                + pl.col('execution_times').cast(pl.List(pl.String)).list.join(', ')
+                + ']'
+            ).write_csv(stream)
 
     def write_parquet(self, path: Path | str) -> None:
         """Writes the benchmark report as Parquet.
