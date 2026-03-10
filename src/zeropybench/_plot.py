@@ -291,8 +291,26 @@ class BenchmarkPlotter:
         Args:
             **subplots_keywords: Additional keyword arguments passed to plt.subplots().
         """
+        import matplotlib.pyplot as plt
+
         fig = self.create_figure(**subplots_keywords)
-        fig.show()
+        if self._in_notebook():
+            from IPython.display import display
+
+            display(fig)
+            plt.close(fig)
+        else:
+            plt.show()
+
+    @staticmethod
+    def _in_notebook() -> bool:
+        """Return True if running inside a Jupyter notebook."""
+        try:
+            from IPython import get_ipython  # type: ignore[attr-defined]
+        except ImportError:
+            return False
+
+        return get_ipython() is not None
 
     def save(self, path: Path | str, **subplots_keywords: Any) -> None:
         """Save the plot to a file.

@@ -76,7 +76,6 @@ filterwarnings = [
     'ignore::PendingDeprecationWarning',
     'ignore::pytest.PytestRemovedIn9Warning',
 ]
-
 nb_test_files = true
 nb_diff_ignore = [
     '/cells/*/execution_count',

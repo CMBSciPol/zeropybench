@@ -6,6 +6,7 @@ import matplotlib
 import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
+from pytest_mock import MockerFixture
 
 matplotlib.use('Agg')  # Non-interactive backend
 
@@ -257,19 +258,48 @@ def test_subplots_keywords(simple_df: pl.DataFrame, tmp_path: Path):
     assert fig.get_figheight() == 8
 
 
-def test_show(simple_df: pl.DataFrame, monkeypatch):
-    """Test show method calls fig.show()."""
+def test_show_not_in_notebook(simple_df: pl.DataFrame, mocker: MockerFixture):
+    """Test show method calls plt.show() when not in a notebook."""
     plotter = BenchmarkPlotter(simple_df)
 
-    show_called = []
-
-    def mock_show(self):
-        show_called.append(True)
-
-    monkeypatch.setattr('matplotlib.figure.Figure.show', mock_show)
+    mock_show = mocker.patch('matplotlib.pyplot.show')
+    mocker.patch.object(BenchmarkPlotter, '_in_notebook', return_value=False)
     plotter.show()
 
-    assert len(show_called) == 1
+    mock_show.assert_called_once()
+
+
+def test_show_in_notebook(simple_df: pl.DataFrame, mocker: MockerFixture):
+    """Test show method calls IPython.display.display() when in a notebook."""
+    plotter = BenchmarkPlotter(simple_df)
+
+    mock_display = mocker.patch('IPython.display.display')
+    mocker.patch.object(BenchmarkPlotter, '_in_notebook', return_value=True)
+    plotter.show()
+
+    mock_display.assert_called_once()
+
+
+def test_in_notebook_no_ipython(mocker: MockerFixture):
+    """Test _in_notebook returns False when IPython is not installed."""
+    mocker.patch('builtins.__import__', side_effect=ImportError)
+    assert BenchmarkPlotter._in_notebook() is False
+
+
+def test_in_notebook_no_shell(mocker: MockerFixture):
+    """Test _in_notebook returns False when get_ipython() returns None."""
+    mocker.patch('IPython.get_ipython', return_value=None)
+    assert BenchmarkPlotter._in_notebook() is False
+
+
+def test_in_notebook_with_shell(mocker: MockerFixture):
+    """Test _in_notebook returns True when get_ipython() returns a shell."""
+
+    class MockShell:
+        pass
+
+    mocker.patch('IPython.get_ipython', return_value=MockShell())
+    assert BenchmarkPlotter._in_notebook() is True
 
 
 def test_reference_creates_two_columns(multidimensional_df: pl.DataFrame, tmp_path: Path):

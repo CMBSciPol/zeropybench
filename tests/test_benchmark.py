@@ -152,7 +152,7 @@ def test_plot(mocker: MockerFixture):
     with bench(n=100):
         sum(range(100))
 
-    mock_show = mocker.patch('matplotlib.figure.Figure.show')
+    mock_show = mocker.patch('matplotlib.pyplot.show')
     bench.plot()
 
     mock_show.assert_called_once()
