@@ -135,6 +135,47 @@ def test_func(code: str, do_jit: bool) -> None:
 @pytest.mark.parametrize(
     'code',
     [
+        'op.add(x, y)',
+        'z = op.add(x, y)',
+        'z: jax.Array = op.add(x, y)',
+    ],
+)
+@pytest.mark.parametrize('do_jit', [False, True])
+def test_method_call(code: str, do_jit: bool) -> None:
+    """Test method call obj.method(x, y)."""
+    x = jnp.array([1, 2])
+    y = jnp.array([3, 4])
+
+    class Op:
+        def add(self, a, b):
+            return a + b
+
+    op = Op()
+    if do_jit:
+        op.add = jax.jit(op.add)
+
+    globals_ = {'x': x, 'y': y, 'op': op}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+
+    if do_jit:
+        assert setup_code == '__bench_func = op.add'
+    else:
+        assert setup_code == '__bench_func = jax.jit(op.add)'
+    assert args == ['x', 'y']
+    __bench_func = globals_.get('__bench_func')
+    assert isinstance(__bench_func, Callable)
+    assert hasattr(__bench_func, 'lower')
+    if do_jit:
+        # Already jitted method is reused directly
+        assert __bench_func is op.add
+
+    assert_array_equal(__bench_func(x, y), jnp.array([4, 6]))
+
+
+@pytest.mark.parametrize(
+    'code',
+    [
         'func(x+1, y)',
         'z = func(x+1, y)',
         'z: jax.Array = func(x+1, y)',

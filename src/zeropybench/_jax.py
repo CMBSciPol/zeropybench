@@ -77,13 +77,12 @@ class CodeASTParser:
             stmt = self.tree.body[0]
             expr = stmt.value  # type: ignore[attr-defined]
             args = [arg.id for arg in expr.args]
-            func_name = expr.func.id
-            bench_func = self.globals[func_name]
+            bench_func, func_str = self._get_func_from_call(expr)
             if self.is_jitted(bench_func):
-                setup_code = f'__bench_func = {func_name}'
+                setup_code = f'__bench_func = {func_str}'
             else:
                 bench_func = jax.jit(bench_func)
-                setup_code = f'__bench_func = jax.jit({func_name})'
+                setup_code = f'__bench_func = jax.jit({func_str})'
 
         else:
             # Wrap the benchmarked code inside a jitted function
@@ -106,6 +105,7 @@ class CodeASTParser:
         - There is exactly one statement
         - It's a simple statement (Expr, Assign, AnnAssign)
         - The value is a function call with simple Name arguments
+        - The function is either a Name (func) or Attribute (obj.method)
         """
         if len(self.tree.body) != 1:
             return False
@@ -115,13 +115,34 @@ class CodeASTParser:
         expr = stmt.value
         if not isinstance(expr, ast.Call):
             return False
-        if not isinstance(expr.func, ast.Name):
+        # Accept func(x, y) or obj.method(x, y)
+        if not isinstance(expr.func, ast.Name | ast.Attribute):
             return False
         if not all(isinstance(arg, ast.Name) for arg in expr.args):
             return False
         if expr.keywords:
             return False
         return True
+
+    def _get_func_from_call(self, expr: ast.Call) -> tuple[Callable[..., Any], str]:
+        """Extract function and its string representation from a Call node.
+
+        Returns:
+            A tuple (func, func_str) where func is the callable and func_str
+            is its string representation (e.g., "func" or "obj.method").
+        """
+        if isinstance(expr.func, ast.Name):
+            func_name = expr.func.id
+            return self.globals[func_name], func_name
+        elif isinstance(expr.func, ast.Attribute):
+            # obj.method -> get obj from globals, then get method
+            func_str = ast.unparse(expr.func)  # "obj.method"
+            obj_name = expr.func.value.id  # type: ignore[attr-defined]  # "obj" (only simple case)
+            obj = self.globals[obj_name]
+            method = getattr(obj, expr.func.attr)
+            return method, func_str
+        else:
+            raise NotImplementedError(f'Unsupported function type: {type(expr.func)}')
 
     @staticmethod
     def is_jitted(func: Callable[..., Any]) -> bool:
