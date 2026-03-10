@@ -14,6 +14,14 @@ pip install --group dev -e .
 or
 uv sync
 ```
+
+The dependency groups `cuda12` and `cuda13` can be used to quickly install JAX with cuda support:
+```bash
+pip install --group dev --group cuda13 -e .
+or
+uv sync --group cuda13
+```
+
 3. Install `pre-commit` (or equivalently `prek`):
 ```bash
 pipx --user install pre-commit

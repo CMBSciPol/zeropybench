@@ -18,9 +18,8 @@ version = '.'.join(release.split('.')[:2])  # Major.minor
 # General configuration
 extensions = [
     'sphinx.ext.autodoc',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
+    'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
     'myst_parser',
@@ -45,7 +44,7 @@ html_theme_options = {
     },
 }
 
-# Extension configuration
+# autodoc settings
 autodoc_default_options = {
     'members': True,
     'undoc-members': True,
@@ -56,7 +55,7 @@ autodoc_typehints = 'description'  # Show type hints in parameter descriptions
 
 # Napoleon settings
 napoleon_google_docstring = True
-napoleon_numpy_docstring = True
+napoleon_numpy_docstring = False
 napoleon_include_init_with_doc = False
 napoleon_include_private_with_doc = False
 

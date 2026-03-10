@@ -25,56 +25,60 @@ ValidBenchmarkType = bool | int | float | str | list[float]
 class Benchmark:
     """A class for multidimensional benchmarking of code snippets.
 
-        Usage:
-            >>> import jax.numpy as jnp
-            >>> bench = Benchmark(repeat=10)
-            >>> for N in [10, 100, 1000, 10000, 100_000, 1_000_000]:
-            ...     x = jnp.ones(N)
-            ...     y = jnp.ones(1000)
-            ...     with bench(method='broadcast right', N=N):
-            ...         x[:, None] + y[None, :]
-            ...     with bench(method='broadcast left', N=N):
-            ...         x[None, :] + y[:, None]
-            >>> print(bench)
-    ┌─────────────────┬───────────┬────────────────────────────┬───────────┬───────────────────────────┬───────────────────────┐
-    │ method          ┆ N         ┆ median_execution_time (µs) ┆ ± (%)     ┆ first_execution_time (µs) ┆ compilation_time (µs) │
-    ╞═════════════════╪═══════════╪════════════════════════════╪═══════════╪═══════════════════════════╪═══════════════════════╡
-    │ broadcast right ┆ 10        ┆ 42.898731                  ┆ 1.624434  ┆ 57_578.695007             ┆ 35_968.202996         │
-    │ broadcast left  ┆ 10        ┆ 42.311095                  ┆ 0.984904  ┆ 42_322.827008             ┆ 26_705.180993         │
-    │ broadcast right ┆ 100       ┆ 42.385543                  ┆ 0.367914  ┆ 49_297.293008             ┆ 37_931.365005         │
-    │ broadcast left  ┆ 100       ┆ 44.101337                  ┆ 2.147681  ┆ 50_773.183                ┆ 38_241.692004         │
-    │ broadcast right ┆ 1_000     ┆ 56.966551                  ┆ 2.445284  ┆ 38_928.845999             ┆ 38_215.008011         │
-    │ broadcast left  ┆ 1_000     ┆ 50.634992                  ┆ 9.380772  ┆ 31_585.520002             ┆ 28_907.275002         │
-    │ broadcast right ┆ 10_000    ┆ 161.021684                 ┆ 3.255582  ┆ 36_715.780996             ┆ 27_870.487989         │
-    │ broadcast left  ┆ 10_000    ┆ 166.723878                 ┆ 4.231237  ┆ 42_878.715001             ┆ 26_596.944008         │
-    │ broadcast right ┆ 100_000   ┆ 1_381.86161                ┆ 11.307259 ┆ 49_187.76                 ┆ 41_679.561997         │
-    │ broadcast left  ┆ 100_000   ┆ 1_394.936208               ┆ 4.29877   ┆ 44_465.061001             ┆ 27_617.544998         │
-    │ broadcast right ┆ 1_000_000 ┆ 10_284.1733                ┆ 0.706548  ┆ 34_732.489992             ┆ 26_034.978            │
-    │ broadcast left  ┆ 1_000_000 ┆ 20_405.4006                ┆ 0.286     ┆ 48_092.860001             ┆ 26_902.942001         │
-    └─────────────────┴───────────┴────────────────────────────┴───────────┴───────────────────────────┴───────────────────────┘
-            >>> bench.write_csv('bench.csv')
-            >>> bench.write_markdown('bench.md')
-            >>> bench.plot()
-            >>> bench.write_plot('bench.pdf')
+    Example::
 
-        Attributes:
-            DEFAULT_REPEAT: The default number of measurement repetitions.
-            DEFAULT_MIN_DURATION_PER_REPEAT: The default minimum duration per repeat in seconds.
-            repeat: The number of times the estimation of the elapsed time will be performed. Each
-                repeat will usually execute the benchmarked code many times.
-            min_duration_per_repeat: The minimum duration of one repeat, in seconds. The function will be
-                executed as many times as it is necessary so that the total execution time is greater
-                than this value. The execution time for this repeat is the mean value of the execution
-                times.
-            _report: Storage for the individual measurements.
-            _cache: Cache of the content of the file names used to extract the with statement context.
-                We don't use the linecache module (except for <...> files) since it's preferable to
-                reset the cache each time a Benchmark class is instantiated (otherwise modifications of
-                the benchmark may not be reflected).
+        import jax.numpy as jnp
+
+        bench = Benchmark(repeat=10)
+        for N in [10_000, 100_000, 1_000_000]:
+            x = jnp.ones(N)
+            y = jnp.ones(1000)
+            with bench(method='broadcast right', N=N):
+                x[:, None] + y[None, :]
+            with bench(method='broadcast left', N=N):
+                x[None, :] + y[:, None]
+        print(bench)
+
+    Output::
+
+        ┌─────────────────┬───────────┬────────────────────────────┬──────────┬───────────────────────────┬───────────────────────┐
+        │ method          ┆ N         ┆ median_execution_time (ms) ┆ ± (%)    ┆ first_execution_time (ms) ┆ compilation_time (ms) │
+        ╞═════════════════╪═══════════╪════════════════════════════╪══════════╪═══════════════════════════╪═══════════════════════╡
+        │ broadcast right ┆ 10_000    ┆ 1.621035                   ┆ 7.45449  ┆ 114.662899                ┆ 82.715331             │
+        │ broadcast left  ┆ 10_000    ┆ 1.637076                   ┆ 1.211578 ┆ 76.16242                  ┆ 59.710502             │
+        │ broadcast right ┆ 100_000   ┆ 10.030257                  ┆ 1.190149 ┆ 44.89509                  ┆ 35.997909             │
+        │ broadcast left  ┆ 100_000   ┆ 10.297392                  ┆ 1.467783 ┆ 133.313475                ┆ 54.304368             │
+        │ broadcast right ┆ 1_000_000 ┆ 94.146169                  ┆ 0.159088 ┆ 137.82041                 ┆ 44.644484             │
+        │ broadcast left  ┆ 1_000_000 ┆ 196.27792                  ┆ 0.093503 ┆ 112.162553                ┆ 80.459331             │
+        └─────────────────┴───────────┴────────────────────────────┴──────────┴───────────────────────────┴───────────────────────┘
+
+    Then export or plot::
+
+        bench.write_csv('bench.csv')
+        bench.plot()
+
+    Attributes:
+        repeat (int): The number of times the estimation of the elapsed time will be
+            performed. Each repeat will usually execute the benchmarked code many times.
+        min_duration_per_repeat (float): The minimum duration of one repeat, in seconds.
+            The function will be executed as many times as necessary so that the total
+            execution time is greater than this value.
     """
 
     DEFAULT_REPEAT: ClassVar[int] = 7
+    """The default number of measurement repetitions."""
+
     DEFAULT_MIN_DURATION_PER_REPEAT: ClassVar[float] = 0.2
+    """The default minimum duration per repeat in seconds."""
+
+    _report: list[dict[str, ValidBenchmarkType]]
+    """Storage for the individual measurements."""
+
+    _cache: dict[str, str]
+    """Cache of the content of the file names used to extract the with statement context.
+    We don't use the linecache module (except for <...> files) since it's preferable to
+    reset the cache each time a Benchmark class is instantiated (otherwise modifications of
+    the benchmark may not be reflected)."""
 
     def __init__(
         self,
@@ -94,8 +98,8 @@ class Benchmark:
         """
         self.repeat = repeat
         self.min_duration_per_repeat = min_duration_per_repeat
-        self._report: list[dict[str, ValidBenchmarkType]] = []
-        self._cache: dict[str, str] = {}
+        self._report = []
+        self._cache = {}
 
     def __repr__(self) -> str:
         with pl.Config(
