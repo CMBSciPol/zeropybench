@@ -22,8 +22,10 @@ def test_expr(code: str) -> None:
     y = jnp.array([3, 4])
     globals_ = {'x': x, 'y': y}
     parser = CodeASTParser.from_code(code)
-    code, globals_ = parser.transform_jax_code({}, globals_)
-    assert code == '__rv = __bench_func(x, y)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(x, y):' in setup_code
+    assert args == ['x', 'y']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
@@ -52,8 +54,12 @@ def test_func(code: str, do_jit: bool) -> None:
     globals_ = {'x': x, 'y': y, 'func': func}
 
     parser = CodeASTParser.from_code(code)
-    code, globals_ = parser.transform_jax_code({}, globals_)
-    assert code == '__rv = __bench_func(x, y)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    if do_jit:
+        assert setup_code == '__bench_func = func'
+    else:
+        assert setup_code == '__bench_func = jax.jit(func)'
+    assert args == ['x', 'y']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
@@ -86,8 +92,10 @@ def test_func_with_argument_as_expr(code: str, do_jit: bool) -> None:
     globals_ = {'x': x, 'y': y, 'func': func}
 
     parser = CodeASTParser.from_code(code)
-    code, globals_ = parser.transform_jax_code({}, globals_)
-    assert code == '__rv = __bench_func(x, y)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(x, y):' in setup_code
+    assert args == ['x', 'y']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
@@ -107,8 +115,10 @@ else:
 """
     globals_ = {'x': x, 'y': y}
     parser = CodeASTParser.from_code(code)
-    new_code, globals_ = parser.transform_jax_code({}, globals_)
-    assert new_code == '__rv = __bench_func(x, y)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(x, y):' in setup_code
+    assert args == ['x', 'y']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
@@ -126,8 +136,10 @@ for _ in range(3):
 """
     globals_ = {'x': x, 'range': range}
     parser = CodeASTParser.from_code(code)
-    new_code, globals_ = parser.transform_jax_code({}, globals_)
-    assert new_code == '__rv = __bench_func(x)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(x):' in setup_code
+    assert args == ['x']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
@@ -142,8 +154,10 @@ def test_multiple_statements() -> None:
     code = 'a = x + y\nb = a * 2'
     globals_ = {'x': x, 'y': y}
     parser = CodeASTParser.from_code(code)
-    new_code, globals_ = parser.transform_jax_code({}, globals_)
-    assert new_code == '__rv = __bench_func(x, y)\n{block_code}'
+    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(x, y):' in setup_code
+    assert args == ['x', 'y']
     __bench_func = globals_.get('__bench_func')
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')

@@ -29,7 +29,7 @@ class Benchmark:
 
         import jax.numpy as jnp
 
-        bench = Benchmark(repeat=10)
+        bench = Benchmark(repeat=10, verbose=True)
         for N in [10_000, 100_000, 1_000_000]:
             x = jnp.ones(N)
             y = jnp.ones(1000)
@@ -85,6 +85,7 @@ class Benchmark:
         *,
         repeat: int = DEFAULT_REPEAT,
         min_duration_per_repeat: float = DEFAULT_MIN_DURATION_PER_REPEAT,
+        verbose: bool = False,
     ) -> None:
         """Returns a Benchmark instance.
 
@@ -95,9 +96,11 @@ class Benchmark:
                 will be executed as many times as necessary so that the total execution time is
                 greater than this value. The execution time for this repeat is the mean value of
                 the execution times.
+            verbose: If True, print the code being benchmarked.
         """
         self.repeat = repeat
         self.min_duration_per_repeat = min_duration_per_repeat
+        self.verbose = verbose
         self._report = []
         self._cache = {}
 
@@ -120,21 +123,28 @@ class Benchmark:
         is_jax = self._is_jax_context(f_locals)
         if is_jax:
             parser = CodeASTParser.from_code(code)
-            code, globals = parser.transform_jax_code(f_locals, f_globals)
-            hlo, compilation_time, is_single_array = self._compile_jax(globals)
-            block_code = (
-                '__rv.block_until_ready()' if is_single_array else 'jax.block_until_ready(__rv)'
-            )
-            code = code.format(block_code=block_code)
+            setup, param_names, globals = parser.transform_jax_code(f_locals, f_globals)
+            hlo, compilation_time, is_single_array = self._compile_jax(param_names, globals)
+            code = f'__bench_func({", ".join(param_names)})'
+            if is_single_array:
+                code += '.block_until_ready()'
+            else:
+                code = f'jax.block_until_ready({code})'
             is_jax_keywords = {
                 'first_execution_time': first_time,
                 'compilation_time': compilation_time,
                 'hlo': hlo,
             }
+            if self.verbose:
+                print(f'Setup code:\n{textwrap.indent(setup, "    ")}', file=sys.stderr)
 
         else:
             is_jax_keywords = {}
             globals = f_locals | f_globals
+
+        if self.verbose:
+            print(f'Benchmarked code:\n{textwrap.indent(code, "    ")}', file=sys.stderr)
+
         execution_times, number = self._run_many_times(code, first_time, globals)
         median, rel_stdev = self._get_statistics(execution_times)
         units = get_optimal_time_units([median])
@@ -225,7 +235,9 @@ class Benchmark:
             raise ImportError('The library JAX is installed but not jaxlib...')  # pragma: nocover
         return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
-    def _compile_jax(self, globals: dict[str, Any]) -> tuple[str, float, bool]:
+    def _compile_jax(
+        self, param_names: list[str], globals: dict[str, Any]
+    ) -> tuple[str, float, bool]:
         """Compile the JAX function and return HLO, compilation time, and output type info.
 
         Returns:
@@ -234,7 +246,6 @@ class Benchmark:
         """
         jax = sys.modules['jax']
         bench_func = globals['__bench_func']
-        param_names = list(inspect.signature(bench_func).parameters.keys())
         arg_values = [globals[name] for name in param_names]
 
         start_time = time.perf_counter()
@@ -447,7 +458,7 @@ class Benchmark:
         return BenchmarkPlotter(self.to_dataframe(), x=x, y=y, by=by, reference=reference)
 
 
-def read_benchmark(path: Path | str) -> Benchmark:
+def read_benchmark(path: Path | str, *, verbose: bool = False) -> Benchmark:
     """Reads a benchmark from a CSV or Parquet file.
 
     The function automatically detects the file format based on the extension
@@ -455,6 +466,7 @@ def read_benchmark(path: Path | str) -> Benchmark:
 
     Args:
         path: The path to the CSV or Parquet file.
+        verbose: If True, set logging level to INFO. If False, set logging level to WARNING.
 
     Returns:
         A Benchmark instance with the data and metadata from the file.
@@ -464,6 +476,8 @@ def read_benchmark(path: Path | str) -> Benchmark:
     """
     reader = BenchmarkReader(Benchmark.DEFAULT_REPEAT, Benchmark.DEFAULT_MIN_DURATION_PER_REPEAT)
     df, repeat, min_duration_per_repeat = reader.read(path)
-    bench = Benchmark(repeat=repeat, min_duration_per_repeat=min_duration_per_repeat)
+    bench = Benchmark(
+        repeat=repeat, min_duration_per_repeat=min_duration_per_repeat, verbose=verbose
+    )
     bench._report = df.to_dicts()
     return bench

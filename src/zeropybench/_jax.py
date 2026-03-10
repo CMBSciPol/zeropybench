@@ -1,5 +1,6 @@
 import ast
 import sys
+from collections.abc import Callable
 from typing import Any
 
 if sys.version_info >= (3, 11):
@@ -24,7 +25,7 @@ class CodeASTParser:
 
     def transform_jax_code(
         self, locals: dict[str, Any], globals: dict[str, Any]
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[str, list[str], dict[str, Any]]:
         """Transform code into a benchmarkable jitted function call.
 
         A simple expression such as ``x + y`` is transformed into::
@@ -57,37 +58,48 @@ class CodeASTParser:
             globals: Global variables from the execution context.
 
         Returns:
-            A tuple ``(new_code, new_globals)`` where ``new_code`` is the transformed
-            code string and ``new_globals`` contains ``__bench_func``.
+            A tuple ``(setup_code, args, new_globals)`` where ``setup_code`` is the
+            code that defines ``__bench_func``, ``args`` is the list of argument names
+            for the function call, and ``new_globals`` contains ``__bench_func``.
         """
 
         jax = sys.modules['jax']
         combined = locals | globals
 
         # Check if it's a simple call to an already jitted function
-        if self._is_simple_jitted_call(combined):
+        if self._is_simple_call():
             stmt = self.tree.body[0]
             expr = stmt.value  # type: ignore[attr-defined]
             args = [arg.id for arg in expr.args]
             func_name = expr.func.id
             bench_func = combined[func_name]
+            if self.is_jitted(bench_func):
+                setup_code = f'__bench_func = {func_name}'
+            else:
+                bench_func = jax.jit(bench_func)
+                setup_code = f'__bench_func = jax.jit({func_name})'
+
         else:
-            # Create a jitted function from the code
+            # Wrap the benchmarked code in a jitted function
             args = sorted(self._collect_used_names(locals, globals))
-            bench_func = jax.jit(self._create_bench_func(args, combined))
+            bench_func, setup_code = self._create_bench_func(args, combined)
+            bench_func = jax.jit(bench_func)
 
-        new_globals = combined | {'__bench_func': bench_func, 'jax': jax}
-        new_code = f'__rv = __bench_func({", ".join(args)})\n{{block_code}}'
-        return new_code, new_globals
+        new_globals = combined | {
+            '__bench_func': bench_func,
+            'jax': jax,
+        }
+        return setup_code, args, new_globals
 
-    def _is_simple_jitted_call(self, combined: dict[str, Any]) -> bool:
+    def _is_simple_call(self) -> bool:
         """Check if code is a simple call to an already jitted function.
+
+        We don't want to re-jit a function because some of its arguments may be static.
 
         Returns True if:
         - There is exactly one statement
         - It's a simple statement (Expr, Assign, AnnAssign)
         - The value is a function call with simple Name arguments
-        - The function is already jitted (has 'lower' attribute)
         """
         if len(self.tree.body) != 1:
             return False
@@ -103,15 +115,23 @@ class CodeASTParser:
             return False
         if expr.keywords:
             return False
-        func = combined.get(expr.func.id)
+        return True
+
+    @staticmethod
+    def is_jitted(func: Callable[..., Any]) -> bool:
+        """Returns ``True`` if ``func`` is jitted."""
         return hasattr(func, 'lower')
 
-    def _create_bench_func(self, args: list[str], combined: dict[str, Any]) -> Any:
+    def _create_bench_func(self, args: list[str], combined: dict[str, Any]) -> tuple[Any, str]:
         """Create a function from the tree body.
 
         The function takes the used variables as arguments and returns a tuple
         of all variables created in the code scope, so that ``block_until_ready``
         can be called on each of them.
+
+        Returns:
+            A tuple ``(func, source)`` where ``func`` is the created function
+            and ``source`` is the source code of the function.
         """
         body = list(self.tree.body)
 
@@ -155,7 +175,10 @@ class CodeASTParser:
         module = ast.Module(body=[func_def], type_ignores=[])
         code = compile(module, '<benchmark>', 'exec')
         exec(code, combined)
-        return combined['__bench_func']
+
+        source = '@jax.jit\n' + ast.unparse(func_def)
+
+        return combined['__bench_func'], source
 
     def _collect_assigned_names(self) -> set[str]:
         """Collect variable names assigned in the AST (Store context)."""
