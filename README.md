@@ -71,14 +71,23 @@ ZeroPyBench automatically detects JAX arrays and optimizes benchmarking accordin
 import jax.numpy as jnp
 from zeropybench import Benchmark
 
-bench = Benchmark()
-x = jnp.ones(1000)
-y = jnp.ones(1000)
+bench = Benchmark(repeat=20, verbose=True)
+x = jnp.ones(1_000_000)
+y = jnp.ones(1_000_000)
 
-with bench(method='add'):
+with bench():
     x + y
 ```
 
+```
+Setup code:
+    @jax.jit
+    def __bench_func(x, y):
+        return x + y
+Benchmarked code:
+    __bench_func(x, y).block_until_ready()
+943.426 µs ± 3.98% (median of 20 runs, 500 loops each)
+```
 When JAX code is detected, zeropybench:
 
 1. **Wraps the code in a JIT-compiled function** to measure optimized execution
@@ -120,8 +129,9 @@ bench.write_plot('results.pdf')
 
 ```python
 Benchmark(
-    repeat=7,                    # Number of measurement repetitions
+    repeat=7,                     # Number of measurement repetitions
     min_duration_per_repeat=0.2,  # Minimum duration per repeat (seconds)
+    verbose=True,                 # Print the rewritten benchmarked code
 )
 ```
 

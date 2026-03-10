@@ -96,7 +96,9 @@ class Benchmark:
                 will be executed as many times as necessary so that the total execution time is
                 greater than this value. The execution time for this repeat is the mean value of
                 the execution times.
-            verbose: If True, print the code being benchmarked.
+            verbose: If True, print the setup and benchmarked code to stderr. For JAX benchmarks,
+                this shows the JIT-compiled function definition and the actual timed call
+                (e.g., ``__bench_func(x, y).block_until_ready()``).
         """
         self.repeat = repeat
         self.min_duration_per_repeat = min_duration_per_repeat
