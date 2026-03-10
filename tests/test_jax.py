@@ -2,11 +2,47 @@ from collections.abc import Callable
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
 from zeropybench import Benchmark
 from zeropybench._jax import CodeASTParser
+
+
+@pytest.mark.parametrize(
+    'var_names, expected',
+    [
+        (['jax_array'], True),  # jax.Array
+        (['jitted_func'], True),  # jitted function
+        (['jax_array', 'numpy_array'], True),  # mixed, has jax.Array
+        (['jitted_func', 'numpy_array'], True),  # mixed, has jitted function
+        (['numpy_array'], False),  # numpy array only
+        (['python_list'], False),  # python list only
+        (['regular_func'], False),  # non-jitted function
+        (['numpy_array', 'python_list'], False),  # no jax
+        ([], False),  # no variables
+    ],
+)
+def test_is_jax_context(var_names: list[str], expected: bool) -> None:
+    """Test is_jax_context detection of JAX arrays and jitted functions."""
+    # Define all possible variables
+    all_vars = {
+        'jax_array': jnp.array([1, 2, 3]),
+        'numpy_array': np.array([1, 2, 3]),
+        'python_list': [1, 2, 3],
+        'jitted_func': jax.jit(lambda x: x + 1),
+        'regular_func': lambda x: x + 1,
+    }
+
+    # Select variables for this test
+    globals_ = {name: all_vars[name] for name in var_names}
+
+    # Build code that uses these variables
+    code = ' + '.join(var_names) if var_names else '1 + 1'
+
+    parser = CodeASTParser.from_code(code, globals_)
+    assert parser.is_jax_context() == expected
 
 
 @pytest.mark.parametrize(
@@ -21,8 +57,8 @@ def test_expr(code: str) -> None:
     x = jnp.array([1, 2])
     y = jnp.array([3, 4])
     globals_ = {'x': x, 'y': y}
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     assert '@jax.jit' in setup_code
     assert 'def __bench_func(x, y):' in setup_code
     assert args == ['x', 'y']
@@ -53,8 +89,8 @@ def test_func(code: str, do_jit: bool) -> None:
 
     globals_ = {'x': x, 'y': y, 'func': func}
 
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     if do_jit:
         assert setup_code == '__bench_func = func'
     else:
@@ -91,8 +127,8 @@ def test_func_with_argument_as_expr(code: str, do_jit: bool) -> None:
 
     globals_ = {'x': x, 'y': y, 'func': func}
 
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     assert '@jax.jit' in setup_code
     assert 'def __bench_func(x, y):' in setup_code
     assert args == ['x', 'y']
@@ -114,8 +150,8 @@ else:
     z = x - y
 """
     globals_ = {'x': x, 'y': y}
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     assert '@jax.jit' in setup_code
     assert 'def __bench_func(x, y):' in setup_code
     assert args == ['x', 'y']
@@ -134,9 +170,9 @@ result = x
 for _ in range(3):
     result = result + x
 """
-    globals_ = {'x': x, 'range': range}
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    globals_ = {'x': x}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     assert '@jax.jit' in setup_code
     assert 'def __bench_func(x):' in setup_code
     assert args == ['x']
@@ -153,8 +189,8 @@ def test_multiple_statements() -> None:
     y = jnp.array([3, 4])
     code = 'a = x + y\nb = a * 2'
     globals_ = {'x': x, 'y': y}
-    parser = CodeASTParser.from_code(code)
-    setup_code, args, globals_ = parser.transform_jax_code({}, globals_)
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
     assert '@jax.jit' in setup_code
     assert 'def __bench_func(x, y):' in setup_code
     assert args == ['x', 'y']

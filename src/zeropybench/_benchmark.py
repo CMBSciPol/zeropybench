@@ -120,17 +120,19 @@ class Benchmark:
         yield
         first_time = time.perf_counter() - start_time
         code, f_locals, f_globals = self._get_execution_context()
-        is_jax = self._is_jax_context(f_locals)
-        if is_jax:
-            parser = CodeASTParser.from_code(code)
-            setup, param_names, globals = parser.transform_jax_code(f_locals, f_globals)
+        globals = f_globals | f_locals
+        parser = CodeASTParser.from_code(code, globals)
+
+        extra_info: dict[str, ValidBenchmarkType]
+        if parser.is_jax_context():
+            setup, param_names, globals = parser.transform_jax_code()
             hlo, compilation_time, is_single_array = self._compile_jax(param_names, globals)
             code = f'__bench_func({", ".join(param_names)})'
             if is_single_array:
                 code += '.block_until_ready()'
             else:
                 code = f'jax.block_until_ready({code})'
-            is_jax_keywords = {
+            extra_info = {
                 'first_execution_time': first_time,
                 'compilation_time': compilation_time,
                 'hlo': hlo,
@@ -139,8 +141,7 @@ class Benchmark:
                 print(f'Setup code:\n{textwrap.indent(setup, "    ")}', file=sys.stderr)
 
         else:
-            is_jax_keywords = {}
-            globals = f_locals | f_globals
+            extra_info = {}
 
         if self.verbose:
             print(f'Benchmarked code:\n{textwrap.indent(code, "    ")}', file=sys.stderr)
@@ -162,8 +163,8 @@ class Benchmark:
             **keywords,
             'median_execution_time': median,
             'execution_times': execution_times,
+            **extra_info,
         }
-        record.update(is_jax_keywords)  # type: ignore[arg-type]
         self._report.append(record)
 
     def _get_execution_context(self) -> tuple[str, dict[str, Any], dict[str, Any]]:
@@ -224,16 +225,6 @@ class Benchmark:
             )
         idx = cmdline.index('-c')
         return cmdline[idx + 1]
-
-    def _is_jax_context(self, locals: dict[str, Any]) -> bool:
-        """Returns true if a variable in the with context is a JAX array."""
-        jax = sys.modules.get('jax')
-        if jax is None:
-            return False
-        jaxlib = sys.modules.get('jaxlib')
-        if jaxlib is None:
-            raise ImportError('The library JAX is installed but not jaxlib...')  # pragma: nocover
-        return any(isinstance(_, jax.Array | jaxlib._jax.PjitFunction) for _ in locals.values())
 
     def _compile_jax(
         self, param_names: list[str], globals: dict[str, Any]

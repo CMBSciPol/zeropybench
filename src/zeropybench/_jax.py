@@ -14,30 +14,41 @@ __all__ = ['CodeASTParser']
 class CodeASTParser:
     """Parse and transform code for JAX benchmarking."""
 
-    def __init__(self, tree: ast.Module) -> None:
+    def __init__(self, tree: ast.Module, globals: dict[str, Any]) -> None:
         self.tree = tree
+        self.globals = globals
 
     @classmethod
-    def from_code(cls, code: str) -> Self:
+    def from_code(cls, code: str, globals: dict[str, Any]) -> Self:
         """Instantiate an AST parser from a JAX code."""
         tree = ast.parse(code, mode='exec')
-        return cls(tree)
+        return cls(tree, globals)
 
-    def transform_jax_code(
-        self, locals: dict[str, Any], globals: dict[str, Any]
-    ) -> tuple[str, list[str], dict[str, Any]]:
+    def is_jax_context(self) -> bool:
+        """Returns true if a JAX variable or a jitted function is used."""
+        jax = sys.modules.get('jax')
+        if jax is None:
+            return False
+
+        names = self._collect_loaded_names()
+        for name in names:
+            obj = self.globals.get(name)
+            if obj is not None and (isinstance(obj, jax.Array) or self.is_jitted(obj)):
+                return True
+        return False
+
+    def transform_jax_code(self) -> tuple[str, list[str], dict[str, Any]]:
         """Transform code into a benchmarkable jitted function call.
 
-        A simple expression such as ``x + y`` is transformed into::
-
-            __rv = __bench_func(x, y)
-            jax.block_until_ready(__rv)
-
-        with ``__bench_func`` defined as::
+        A simple expression such as ``x + y`` is wrapped into a jitted function::
 
             @jax.jit
             def __bench_func(x, y):
                 return x + y
+
+        And the benchmark is performed on::
+
+            __bench_func(x, y).block_until_ready()
 
         For a function call ``func(x, y)``, ``__bench_func`` is set to ``jax.jit(func)``
         if ``func`` is not already jitted, or to ``func`` directly otherwise.
@@ -53,10 +64,6 @@ class CodeASTParser:
                 b = a * 2
                 return a, b
 
-        Args:
-            locals: Local variables from the execution context.
-            globals: Global variables from the execution context.
-
         Returns:
             A tuple ``(setup_code, args, new_globals)`` where ``setup_code`` is the
             code that defines ``__bench_func``, ``args`` is the list of argument names
@@ -64,15 +71,14 @@ class CodeASTParser:
         """
 
         jax = sys.modules['jax']
-        combined = locals | globals
 
-        # Check if it's a simple call to an already jitted function
         if self._is_simple_call():
+            # Check if it's a simple call, in which case the function is reused and jitted if needed
             stmt = self.tree.body[0]
             expr = stmt.value  # type: ignore[attr-defined]
             args = [arg.id for arg in expr.args]
             func_name = expr.func.id
-            bench_func = combined[func_name]
+            bench_func = self.globals[func_name]
             if self.is_jitted(bench_func):
                 setup_code = f'__bench_func = {func_name}'
             else:
@@ -80,12 +86,12 @@ class CodeASTParser:
                 setup_code = f'__bench_func = jax.jit({func_name})'
 
         else:
-            # Wrap the benchmarked code in a jitted function
-            args = sorted(self._collect_used_names(locals, globals))
-            bench_func, setup_code = self._create_bench_func(args, combined)
+            # Wrap the benchmarked code inside a jitted function
+            args = sorted(self._collect_used_names())
+            bench_func, setup_code = self._create_bench_func(args, self.globals)
             bench_func = jax.jit(bench_func)
 
-        new_globals = combined | {
+        new_globals = self.globals | {
             '__bench_func': bench_func,
             'jax': jax,
         }
@@ -120,7 +126,7 @@ class CodeASTParser:
     @staticmethod
     def is_jitted(func: Callable[..., Any]) -> bool:
         """Returns ``True`` if ``func`` is jitted."""
-        return hasattr(func, 'lower')
+        return callable(func) and hasattr(func, 'lower')
 
     def _create_bench_func(self, args: list[str], combined: dict[str, Any]) -> tuple[Any, str]:
         """Create a function from the tree body.
@@ -180,6 +186,31 @@ class CodeASTParser:
 
         return combined['__bench_func'], source
 
+    def _collect_used_names(self) -> set[str]:
+        """Collect variable names used in the AST.
+
+        keep only names in locals/globals, exclude builtins and callables
+        """
+
+        names = self._collect_loaded_names()
+        return {name for name in names if name in self.globals and not callable(self.globals[name])}
+
+    def _collect_loaded_names(self) -> set[str]:
+        """Collect variable names used in the AST."""
+
+        class NameCollector(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.names: set[str] = set()
+
+            def visit_Name(self, node: ast.Name) -> None:
+                if isinstance(node.ctx, ast.Load):
+                    self.names.add(node.id)
+                self.generic_visit(node)
+
+        collector = NameCollector()
+        collector.visit(self.tree)
+        return collector.names
+
     def _collect_assigned_names(self) -> set[str]:
         """Collect variable names assigned in the AST (Store context)."""
 
@@ -195,24 +226,3 @@ class CodeASTParser:
         collector = NameCollector()
         collector.visit(self.tree)
         return collector.names
-
-    def _collect_used_names(self, locals: dict[str, Any], globals: dict[str, Any]) -> set[str]:
-        """Collect variable names used in the AST."""
-
-        class NameCollector(ast.NodeVisitor):
-            def __init__(self) -> None:
-                self.names: set[str] = set()
-
-            def visit_Name(self, node: ast.Name) -> None:
-                if isinstance(node.ctx, ast.Load):
-                    self.names.add(node.id)
-                self.generic_visit(node)
-
-        collector = NameCollector()
-        collector.visit(self.tree)
-
-        # Filter: keep only names in locals/globals, exclude builtins and callables
-        combined = locals | globals
-        return {
-            name for name in collector.names if name in combined and not callable(combined[name])
-        }
