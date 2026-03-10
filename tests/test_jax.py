@@ -1,10 +1,12 @@
 from collections.abc import Callable
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+from pytest_mock import MockerFixture
 
 from zeropybench import Benchmark
 from zeropybench._jax import CodeASTParser
@@ -45,6 +47,15 @@ def test_is_jax_context(var_names: list[str], expected: bool) -> None:
     assert parser.is_jax_context() == expected
 
 
+def test_is_jax_context_no_jax(mocker: MockerFixture) -> None:
+    """Test is_jax_context returns False when JAX is not imported."""
+    mocker.patch.dict('sys.modules', {'jax': None})
+
+    globals_ = {'x': [1, 2, 3]}
+    parser = CodeASTParser.from_code('x', globals_)
+    assert parser.is_jax_context() is False
+
+
 @pytest.mark.parametrize(
     'code',
     [
@@ -66,6 +77,21 @@ def test_expr(code: str) -> None:
     assert isinstance(__bench_func, Callable)
     assert hasattr(__bench_func, 'lower')
     assert_array_equal(__bench_func(x, y), jnp.array([[4, 5], [5, 6]]))
+
+
+def test_subscript_call() -> None:
+    """Test that subscript call funcs[0](x) is wrapped (not a simple call)."""
+    x = jnp.array([1, 2])
+
+    def add_one(a):
+        return a + 1
+
+    funcs = [add_one]
+    globals_ = {'x': x, 'funcs': funcs}
+    parser = CodeASTParser.from_code('funcs[0](x)', globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    # Not a simple call, so it's wrapped in a jitted function
+    assert setup_code == '@jax.jit\ndef __bench_func(funcs, x):\n    return funcs[0](x)'
 
 
 @pytest.mark.parametrize(
@@ -230,9 +256,9 @@ def test_benchmark_jax_context():
     assert 'HloModule' in report['hlo'] or 'module' in report['hlo'].lower()
 
 
-def test_benchmark_jax_jitted_function():
+def test_benchmark_jax_jitted_function(capsys: pytest.CaptureFixture):
     """Test JAX benchmark with already jitted function."""
-    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01, verbose=True)
 
     @jax.jit
     def add_arrays(x, y):
@@ -241,15 +267,64 @@ def test_benchmark_jax_jitted_function():
     x = jnp.array([1, 2, 3])
     y = jnp.array([4, 5, 6])
 
-    with bench(method='jitted_add'):
+    with bench():
         add_arrays(x, y)
+    captured = capsys.readouterr().err
+    assert (
+        captured
+        == """\
+Setup code:
+    __bench_func = add_arrays
+Benchmarked code:
+    __bench_func(x, y).block_until_ready()
+"""
+    )
 
-    report = bench.to_dicts()[0]
-    assert 'hlo' in report
-    assert report['method'] == 'jitted_add'
+
+def test_benchmark_jax_multiple_outputs(capsys: pytest.CaptureFixture):
+    """Test JAX benchmark with multiple outputs (uses jax.block_until_ready)."""
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01, verbose=True)
+
+    x = jnp.array([1, 2, 3])
+    y = jnp.array([4, 5, 6])
+
+    with bench():
+        a = x + y
+        b = a * 2  # noqa: F841
+
+    captured = capsys.readouterr().err
+    assert (
+        captured
+        == """\
+Setup code:
+    @jax.jit
+    def __bench_func(x, y):
+        a = x + y
+        b = a * 2
+        return (a, b)
+Benchmarked code:
+    jax.block_until_ready(__bench_func(x, y))
+"""
+    )
 
 
-def test_benchmark_jax_plot(tmp_path):
+def test_benchmark_jax_verbose(capsys: pytest.CaptureFixture) -> None:
+    """Test JAX benchmark verbose mode prints setup and benchmarked code."""
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01, verbose=True)
+
+    x = jnp.array([1, 2, 3])
+    y = jnp.array([4, 5, 6])
+
+    with bench(method='add'):
+        x + y
+
+    captured = capsys.readouterr().err
+    assert 'Setup code:' in captured
+    assert '__bench_func' in captured
+    assert 'Benchmarked code:' in captured
+
+
+def test_benchmark_jax_plot(tmp_path: Path):
     """Test JAX benchmark plotting (excludes JAX-specific columns from legend)."""
     import matplotlib
 

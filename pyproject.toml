@@ -56,7 +56,7 @@ cuda13 = ['jax[cuda13]>=0.7; python_version>="3.11"']
 show_missing = true
 skip_covered = true
 exclude_also = [
-    "from typing_extensions import",
+    'from typing_extensions import',
     "assert False, 'unreachable'",
 ]
 

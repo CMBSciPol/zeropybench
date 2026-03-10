@@ -24,6 +24,18 @@ def test_write_csv(tmp_path: Path):
     assert 'execution_times' in content
 
 
+def test_write_csv_with_string_path(tmp_path: Path):
+    """Test writing benchmark to CSV with string path."""
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.05)
+
+    with bench(name='test'):
+        sum(range(100))
+
+    path = str(tmp_path / 'results.csv')  # String path, not Path object
+    bench.write_csv(path)
+    assert Path(path).exists()
+
+
 def test_write_parquet(tmp_path: Path):
     """Test writing benchmark to Parquet with metadata."""
     bench = Benchmark(repeat=3, min_duration_per_repeat=0.05)
@@ -87,6 +99,20 @@ def test_read_benchmark_csv(tmp_path: Path):
     assert loaded.to_dataframe()['name'][0] == 'test'
     assert loaded.to_dataframe()['n'][0] == 100
     assert len(loaded.to_dataframe()['execution_times'][0]) == 5
+
+
+def test_read_benchmark_csv_with_string_path(tmp_path: Path):
+    """Test reading benchmark from CSV with string path."""
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.05)
+
+    with bench(name='test'):
+        sum(range(100))
+
+    path = tmp_path / 'results.csv'
+    bench.write_csv(path)
+
+    loaded = read_benchmark(str(path))  # String path, not Path object
+    assert loaded.repeat == 3
 
 
 def test_read_benchmark_parquet(tmp_path: Path):
