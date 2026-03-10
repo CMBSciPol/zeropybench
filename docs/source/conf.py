@@ -22,8 +22,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
     'sphinx.ext.mathjax',
-    'myst_parser',
-    'nbsphinx',
+    'myst_nb',
 ]
 
 templates_path = ['_templates']
@@ -81,13 +80,11 @@ intersphinx_mapping = {
     'polars': ('https://docs.pola.rs/api/python/stable/', None),
 }
 
-# nbsphinx configuration
-nbsphinx_execute = 'always'  # Execute notebooks during build
-nbsphinx_allow_errors = True  # Continue building even if there are errors
-nbsphinx_timeout = 300  # Timeout for notebook execution in seconds
-
-# Additional nbsphinx settings
-nbsphinx_execute_arguments = []
+# myst-nb configuration
+nb_execution_mode = 'auto'  # Execute notebooks only if no outputs exist
+nb_execution_raise_on_error = False  # Continue building even if there are errors
+nb_execution_timeout = 300  # Timeout for notebook execution in seconds
+nb_merge_streams = True  # Merge consecutive stdout/stderr outputs
 
 
 def setup(app):
