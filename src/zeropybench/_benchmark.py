@@ -41,16 +41,16 @@ class Benchmark:
 
     Output::
 
-        ┌─────────────────┬───────────┬────────────────────────────┬──────────┬───────────────────────────┬───────────────────────┐
-        │ method          ┆ N         ┆ median_execution_time (ms) ┆ ± (%)    ┆ first_execution_time (ms) ┆ compilation_time (ms) │
-        ╞═════════════════╪═══════════╪════════════════════════════╪══════════╪═══════════════════════════╪═══════════════════════╡
-        │ broadcast right ┆ 10_000    ┆ 1.621035                   ┆ 7.45449  ┆ 114.662899                ┆ 82.715331             │
-        │ broadcast left  ┆ 10_000    ┆ 1.637076                   ┆ 1.211578 ┆ 76.16242                  ┆ 59.710502             │
-        │ broadcast right ┆ 100_000   ┆ 10.030257                  ┆ 1.190149 ┆ 44.89509                  ┆ 35.997909             │
-        │ broadcast left  ┆ 100_000   ┆ 10.297392                  ┆ 1.467783 ┆ 133.313475                ┆ 54.304368             │
-        │ broadcast right ┆ 1_000_000 ┆ 94.146169                  ┆ 0.159088 ┆ 137.82041                 ┆ 44.644484             │
-        │ broadcast left  ┆ 1_000_000 ┆ 196.27792                  ┆ 0.093503 ┆ 112.162553                ┆ 80.459331             │
-        └─────────────────┴───────────┴────────────────────────────┴──────────┴───────────────────────────┴───────────────────────┘
+        ┌───┬─────────────────┬───────────┬────────────────────────────┬──────────┬───────────────────────────┬───────────────────────┐
+        │   ┆ method          ┆ N         ┆ median_execution_time (ms) ┆ ± (%)    ┆ first_execution_time (ms) ┆ compilation_time (ms) │
+        ╞═══╪═════════════════╪═══════════╪════════════════════════════╪══════════╪═══════════════════════════╪═══════════════════════╡
+        │ 0 ┆ broadcast right ┆ 10_000    ┆ 1.621035                   ┆ 7.45449  ┆ 114.662899                ┆ 82.715331             │
+        │ 1 ┆ broadcast left  ┆ 10_000    ┆ 1.637076                   ┆ 1.211578 ┆ 76.16242                  ┆ 59.710502             │
+        │ 2 ┆ broadcast right ┆ 100_000   ┆ 10.030257                  ┆ 1.190149 ┆ 44.89509                  ┆ 35.997909             │
+        │ 3 ┆ broadcast left  ┆ 100_000   ┆ 10.297392                  ┆ 1.467783 ┆ 133.313475                ┆ 54.304368             │
+        │ 4 ┆ broadcast right ┆ 1_000_000 ┆ 94.146169                  ┆ 0.159088 ┆ 137.82041                 ┆ 44.644484             │
+        │ 5 ┆ broadcast left  ┆ 1_000_000 ┆ 196.27792                  ┆ 0.093503 ┆ 112.162553                ┆ 80.459331             │
+        └───┴─────────────────┴───────────┴────────────────────────────┴──────────┴───────────────────────────┴───────────────────────┘
 
     Then export or plot::
 
@@ -347,8 +347,25 @@ class Benchmark:
             to_units(pl.col('median_execution_time').name.suffix(suffix), units),
             (1.4826 * pl.col('mad') / pl.col('median_execution_time') * 100).alias('± (%)'),
             to_units(pl.col(extra_columns).name.suffix(suffix), units),
-        )
+        ).with_row_index('')
         return df
+
+    def __len__(self) -> int:
+        """Returns the number of runs in the benchmark."""
+        return len(self._report)
+
+    def __bool__(self) -> bool:
+        """Returns True if the benchmark is not empty."""
+        return len(self) > 0
+
+    def __getitem__(self, item: int) -> dict[str, ValidBenchmarkType]:
+        """Returns the benchmark run with the given index (chronologically)."""
+        try:
+            return self._report[item]
+        except IndexError:
+            pass
+        message = f'contains only {len(self)} runs' if self else 'is empty'
+        raise IndexError(f'Index {item} is out of range. The benchmark report {message}.')
 
     def to_dicts(self) -> list[dict[str, Any]]:
         """Returns the benchmark as a list of dicts."""

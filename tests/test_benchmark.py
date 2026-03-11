@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from pytest_mock import MockerFixture
 
 from zeropybench import Benchmark
@@ -14,6 +15,8 @@ def test_basic_benchmark():
     with bench(name='sum'):
         sum(range(100))
 
+    assert bench
+    assert len(bench) == 1
     df = bench.to_dataframe()
     assert len(df) == 1
     assert df['name'][0] == 'sum'
@@ -31,9 +34,9 @@ def test_multiple_benchmarks():
     with bench(n=100):
         sum(range(100))
 
-    df = bench.to_dataframe()
-    assert len(df) == 2
-    assert df['n'].to_list() == [10, 100]
+    assert len(bench) == 2
+    assert bench[0]['n'] == 10
+    assert bench[1]['n'] == 100
 
 
 def test_multidimensional_keywords():
@@ -77,8 +80,25 @@ def test_execution_times_are_positive():
 def test_empty_benchmark():
     """Test empty benchmark returns empty dataframe."""
     bench = Benchmark()
+    assert not bench
+    assert len(bench) == 0
     df = bench.to_dicts()
     assert len(df) == 0
+
+
+def test_getitem_out_of_range_on_empty_benchmark():
+    bench = Benchmark()
+    with pytest.raises(IndexError, match='is empty'):
+        _ = bench[0]
+
+
+@pytest.mark.parametrize('index', [2, -3])
+def test_getitem_out_of_range_on_non_empty_benchmark(index: int):
+    bench = Benchmark()
+    bench._report = 2 * [{}]
+    assert len(bench) == 2
+    with pytest.raises(IndexError, match='contains only 2 runs'):
+        _ = bench[index]
 
 
 def test_empty_benchmark_display_dataframe():
@@ -129,6 +149,20 @@ def test_repr():
     assert 'test' in repr_str
     assert 'median_execution_time' in repr_str
     assert '± (%)' in repr_str
+
+
+def test_repr_empty():
+    """Test __repr__ returns a string table."""
+    bench = Benchmark()
+
+    assert (
+        repr(bench)
+        == """\
+┌───────────────────────┬───────┬─────────────────┐
+│ median_execution_time ┆ ± (%) ┆ execution_times │
+╞═══════════════════════╪═══════╪═════════════════╡
+└───────────────────────┴───────┴─────────────────┘"""
+    )
 
 
 def test_repeat_two():

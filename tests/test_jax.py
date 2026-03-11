@@ -352,7 +352,7 @@ def test_benchmark_jax_context():
     with bench(method='add'):
         x + y
 
-    report = bench.to_dicts()[0]
+    report = bench[0]
 
     # Check JAX-specific fields are present
     assert 'first_execution_time' in report
