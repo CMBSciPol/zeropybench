@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import matplotlib.figure
-import matplotlib.pyplot as mp
+import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import polars as pl
 import polars.selectors as cs
@@ -141,7 +141,7 @@ class BenchmarkPlotter:
         nsubplot = len(plot_partitions)
         ncols = 2 if self.reference else 1
         fig: matplotlib.figure.Figure
-        fig, axs = mp.subplots(nsubplot, ncols, **subplots_keywords)
+        fig, axs = plt.subplots(nsubplot, ncols, **subplots_keywords)
         if nsubplot == 1 and ncols == 1:
             axs = ((axs,),)
         elif nsubplot == 1:
@@ -291,8 +291,6 @@ class BenchmarkPlotter:
         Args:
             **subplots_keywords: Additional keyword arguments passed to plt.subplots().
         """
-        import matplotlib.pyplot as plt
-
         fig = self.create_figure(**subplots_keywords)
         if self._in_notebook():
             from IPython.display import display
@@ -321,6 +319,7 @@ class BenchmarkPlotter:
         """
         fig = self.create_figure(**subplots_keywords)
         fig.savefig(path)
+        plt.close(fig)
 
     @staticmethod
     def _infer_x_axis(df: pl.DataFrame) -> str:
