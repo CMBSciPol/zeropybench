@@ -19,7 +19,7 @@ from ._units import get_optimal_time_units, to_units
 
 __all__ = ['Benchmark', 'read_benchmark']
 
-ValidBenchmarkType = bool | int | float | str | list[float]
+ValidBenchmarkType = bool | int | float | str | list[float] | None
 
 
 class Benchmark:
@@ -230,7 +230,7 @@ class Benchmark:
 
     def _compile_jax(
         self, param_names: list[str], globals: dict[str, Any]
-    ) -> tuple[str, float, bool]:
+    ) -> tuple[str | None, float | None, bool]:
         """Compile the JAX function and return HLO, compilation time, and output type info.
 
         Returns:
@@ -240,13 +240,22 @@ class Benchmark:
         bench_func = globals['__bench_func']
         arg_values = [globals[name] for name in param_names]
 
-        start_time = time.perf_counter()
-        lowered = bench_func.lower(*arg_values)
-        compiled = lowered.compile()
-        compilation_time = time.perf_counter() - start_time
-
-        hlo = compiled.as_text()
-        is_single_array = lowered.out_tree.num_leaves == 1
+        try:
+            start_time = time.perf_counter()
+            lowered = bench_func.lower(*arg_values)
+            compiled = lowered.compile()
+            compilation_time = time.perf_counter() - start_time
+        except Exception as exc:
+            print(
+                f'Warning: the lowering or compilation of the JAX jitted function failed: {exc}',
+                file=sys.stderr,
+            )
+            compilation_time = None
+            hlo = None
+            is_single_array = False
+        else:
+            hlo = compiled.as_text()
+            is_single_array = lowered.out_tree.num_leaves == 1
         return hlo, compilation_time, is_single_array
 
     def _run_many_times(
@@ -313,7 +322,14 @@ class Benchmark:
         if not self._report:
             schema = {'median_execution_time': pl.Float64(), 'execution_times': pl.List(pl.Float64)}
             return pl.DataFrame({'median_execution_time': [], 'execution_times': []}, schema=schema)
-        return pl.DataFrame(self._report)
+        if 'hlo' in self._report[0]:
+            schema = {
+                'compilation_time': pl.Float64(),
+                'hlo': pl.String(),
+            }
+        else:
+            schema = {}
+        return pl.DataFrame(self._report, schema_overrides=schema)
 
     def _to_display_dataframe(self) -> pl.DataFrame:
         """Returns the benchmark as a Polars dataframe with times in display units."""

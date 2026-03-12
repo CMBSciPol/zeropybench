@@ -1,10 +1,13 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import polars as pl
 import pytest
+from jax import Array
 from numpy.testing import assert_array_equal
 from pytest_mock import MockerFixture
 
@@ -436,7 +439,7 @@ def test_benchmark_jax_verbose(capsys: pytest.CaptureFixture) -> None:
     assert 'Benchmarked code:' in captured
 
 
-def test_benchmark_jax_plot(tmp_path: Path):
+def test_benchmark_jax_plot(tmp_path: Path) -> None:
     """Test JAX benchmark plotting (excludes JAX-specific columns from legend)."""
     import matplotlib
 
@@ -453,3 +456,28 @@ def test_benchmark_jax_plot(tmp_path: Path):
     path = tmp_path / 'results.png'
     bench.write_plot(path)
     assert path.exists()
+
+
+def test_benchmark_jax_error(capsys: pytest.CaptureFixture[str]) -> None:
+    """Test JAX benchmark error handling."""
+
+    @jax.tree_util.register_dataclass
+    @dataclass
+    class Pytree:
+        x: Array
+
+        def __init__(self, x) -> None:
+            self.x = jnp.asarray(x)
+
+    pytree = Pytree(jnp.array([1, 2, 3]))
+    bench = Benchmark(repeat=3, min_duration_per_repeat=0.01)
+    with bench():
+        pytree
+
+    assert 'Warning: the lowering or compilation' in capsys.readouterr().err
+    assert bench[0]['compilation_time'] is None
+    assert bench[0]['hlo'] is None
+
+    df = bench.to_dataframe()
+    assert df.schema['compilation_time'] == pl.Float64
+    assert df.schema['hlo'] == pl.String

@@ -194,8 +194,6 @@ def test_plot(mocker: MockerFixture):
 
 def test_get_code_from_cmdline_no_c_flag():
     """Test _get_code_from_cmdline raises error when -c flag is not present."""
-    import pytest
-
     # This test only works on Linux
     cmdline_path = Path('/proc/self/cmdline')
     if not cmdline_path.exists():
@@ -208,8 +206,6 @@ def test_get_code_from_cmdline_no_c_flag():
 
 def test_get_code_from_cmdline_not_linux(mocker: MockerFixture):
     """Test _get_code_from_cmdline raises error on non-Linux systems."""
-    import pytest
-
     mocker.patch('zeropybench._benchmark.Path.exists', return_value=False)
 
     with pytest.raises(RuntimeError, match='only supported on Linux'):
