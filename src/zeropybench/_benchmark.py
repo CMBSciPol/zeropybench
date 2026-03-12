@@ -303,10 +303,13 @@ class Benchmark:
                     return number, time_taken
             i *= 10
 
-    def _get_statistics(self, execution_times: list[float]) -> tuple[float, float]:
+    @staticmethod
+    def _get_statistics(execution_times: list[float]) -> tuple[float, float]:
         """Return the median and the relative MAD scaled to estimate standard deviation"""
         df = pl.DataFrame({'values': [execution_times]})
-        df = df.select(median=pl.col('values').list.median(), mad=self._get_mad(pl.col('values')))
+        df = df.select(
+            median=pl.col('values').list.median(), mad=Benchmark._get_mad(pl.col('values'))
+        )
         median = df['median'].item()
         rel_stdev = 1.4826 * df['mad'].item() / median * 100
         return median, rel_stdev
