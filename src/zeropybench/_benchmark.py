@@ -148,7 +148,15 @@ class Benchmark:
         if self.verbose:
             print(f'Benchmarked code:\n{textwrap.indent(code, "    ")}', file=sys.stderr)
 
-        execution_times, number = self._run_many_times(code, first_time, globals)
+        if parser.is_jax_context():
+            # In JAX context, first_time is not representative because of XLA optimizations.
+            # Run the jitted code once to get an accurate estimate for autorange.
+            timer = timeit.Timer(code, globals=globals)
+            estimated_time = timer.timeit(1)
+        else:
+            estimated_time = first_time
+
+        execution_times, number = self._run_many_times(code, estimated_time, globals)
         median, rel_stdev = self._get_statistics(execution_times)
         units = get_optimal_time_units([median])
         median_display = to_units(median, units)
