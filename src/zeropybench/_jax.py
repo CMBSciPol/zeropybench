@@ -25,7 +25,7 @@ class CodeASTParser:
         return cls(tree, globals)
 
     def is_jax_context(self) -> bool:
-        """Returns true if a JAX variable or a jitted function is used."""
+        """Returns true if a JAX variable, module, or jitted function is used."""
         jax = sys.modules.get('jax')
         if jax is None:
             return False
@@ -39,7 +39,17 @@ class CodeASTParser:
                 return True
             if self._contains_jax_arrays(obj, jax):
                 return True
+            if self._is_jax_module(obj):
+                return True
         return False
+
+    @staticmethod
+    def _is_jax_module(obj: Any) -> bool:
+        """Check if an object is a JAX module (jax, jax.numpy, etc.)."""
+        module_name: str | None = getattr(obj, '__name__', None)
+        if module_name is None:
+            return False
+        return module_name == 'jax' or module_name.startswith('jax.')
 
     @staticmethod
     def _contains_jax_arrays(obj: Any, jax: Any) -> bool:

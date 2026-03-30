@@ -121,6 +121,19 @@ def test_is_jax_context_dataclass_without_jax_arrays() -> None:
     assert parser.is_jax_context() is False
 
 
+def test_is_jax_context_jax_module() -> None:
+    """Test is_jax_context detects JAX modules (jnp.ones, jax.random, etc.)."""
+    # jax.numpy module
+    globals_ = {'jnp': jnp}
+    parser = CodeASTParser.from_code('jnp.ones((10, 10))', globals_)
+    assert parser.is_jax_context() is True
+
+    # jax module directly
+    globals_ = {'jax': jax}
+    parser = CodeASTParser.from_code('jax.numpy.ones((10, 10))', globals_)
+    assert parser.is_jax_context() is True
+
+
 def test_is_jax_context_no_jax(mocker: MockerFixture) -> None:
     """Test is_jax_context returns False when JAX is not imported."""
     mocker.patch.dict('sys.modules', {'jax': None})
