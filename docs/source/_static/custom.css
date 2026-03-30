@@ -1,0 +1,5 @@
+/* Make stderr output look identical to stdout */
+.cell_output .output.stderr {
+    background: inherit;
+    border: none;
+}
