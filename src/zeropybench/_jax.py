@@ -230,15 +230,19 @@ class CodeASTParser:
     def _collect_used_names(self) -> set[str]:
         """Collect variable names used in the AST.
 
-        Keep only names in locals/globals, exclude builtins, callables,
+        Keep only names in locals/globals, exclude builtins, callables, modules,
         and names that are assigned in the code (local variables).
         """
+        from types import ModuleType
+
         loaded_names = self._collect_loaded_names()
         assigned_names = self._collect_assigned_names()
         return {
             name
             for name in loaded_names - assigned_names
-            if name in self.globals and not callable(self.globals[name])
+            if name in self.globals
+            and not callable(self.globals[name])
+            and not isinstance(self.globals[name], ModuleType)
         }
 
     def _collect_loaded_names(self) -> set[str]:
