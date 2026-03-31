@@ -119,6 +119,10 @@ class Benchmark:
 
     @contextlib.contextmanager
     def __call__(self, **keywords: ValidBenchmarkType) -> Iterator[None]:
+        # clear the JAX compilation caches
+        jax = sys.modules.get('jax')
+        if jax is not None:
+            jax.clear_caches()
         start_time = time.perf_counter()
         yield
         first_time = time.perf_counter() - start_time
