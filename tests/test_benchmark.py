@@ -192,6 +192,19 @@ def test_plot(mocker: MockerFixture):
     mock_show.assert_called_once()
 
 
+def test_autorange_first_time_sufficient():
+    """Test that autorange returns 1 loop when first_time >= min_duration_per_repeat."""
+    import time
+
+    bench = Benchmark(repeat=2, min_duration_per_repeat=0.01)
+
+    with bench():
+        time.sleep(0.02)
+
+    report = bench[0]
+    assert len(report['execution_times']) == 2
+
+
 def test_get_code_from_cmdline_no_c_flag():
     """Test _get_code_from_cmdline raises error when -c flag is not present."""
     # This test only works on Linux
