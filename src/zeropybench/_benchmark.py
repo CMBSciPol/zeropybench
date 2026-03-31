@@ -1,4 +1,5 @@
 import contextlib
+import gc
 import inspect
 import linecache
 import sys
@@ -279,9 +280,10 @@ class Benchmark:
         """
         number, time_taken = self._autorange(func, first_time, globals)
         timer = timeit.Timer(func, globals=globals)
-        runs = [time_taken / number] + [
-            _ / number for _ in timer.repeat(repeat=self.repeat - 1, number=number)
-        ]
+        runs = [time_taken / number]
+        for _ in range(self.repeat - 1):
+            gc.collect()
+            runs.append(timer.timeit(number) / number)
         return runs, number
 
     def _autorange(
