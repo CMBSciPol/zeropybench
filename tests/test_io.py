@@ -19,9 +19,13 @@ def test_write_csv(tmp_path: Path):
     bench.write_csv(path)
     assert path.exists()
     content = path.read_text()
-    assert content.startswith('# repeat = 3\n# min_duration_per_repeat = 0.05\n')
+    assert '# repeat = 3' in content
+    assert '# min_duration_per_repeat = 0.05' in content
     assert 'test' in content
     assert 'execution_times' in content
+    # The file should be valid CSV (no comment lines before headers)
+    df = pl.read_csv(path)
+    assert len(df) == 1
 
 
 def test_write_csv_with_string_path(tmp_path: Path):
@@ -131,6 +135,14 @@ def test_read_benchmark_parquet(tmp_path: Path):
     assert loaded.to_dataframe()['name'][0] == 'test'
     assert loaded.to_dataframe()['n'][0] == 200
     assert len(loaded.to_dataframe()['execution_times'][0]) == 4
+
+
+def test_read_csv_with_leading_comment_lines(tmp_path: Path):
+    """Test that leading comment lines are skipped when reading a CSV."""
+    path = tmp_path / 'results.csv'
+    path.write_text('# some comment\nname,median_execution_time\ntest,0.1\n')
+    loaded = read_benchmark(path)
+    assert loaded.to_dataframe()['name'][0] == 'test'
 
 
 def test_read_benchmark_unsupported_extension(tmp_path: Path):
