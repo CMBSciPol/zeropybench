@@ -133,7 +133,7 @@ class Benchmark:
         extra_info: dict[str, ValidBenchmarkType]
         if parser.is_jax_context():
             setup, param_names, globals = parser.transform_jax_code()
-            hlo, compilation_time, is_single_array = self._compile_jax(param_names, globals)
+            is_single_array, jax_metadata = self._compile_jax(param_names, globals)
             code = f'__bench_func({", ".join(param_names)})'
             if is_single_array:
                 code += '.block_until_ready()'
@@ -141,8 +141,7 @@ class Benchmark:
                 code = f'jax.block_until_ready({code})'
             extra_info = {
                 'first_execution_time': first_time,
-                'compilation_time': compilation_time,
-                'hlo': hlo,
+                **jax_metadata,
             }
             if self.verbose:
                 print(f'Setup code:\n{textwrap.indent(setup, "    ")}', file=sys.stderr)
@@ -243,12 +242,14 @@ class Benchmark:
 
     def _compile_jax(
         self, param_names: list[str], globals: dict[str, Any]
-    ) -> tuple[str | None, float | None, bool]:
-        """Compile the JAX function and return HLO, compilation time, and output type info.
+    ) -> tuple[bool, dict[str, ValidBenchmarkType]]:
+        """Compile the JAX function and return output type info and metadata.
 
         Returns:
-            A tuple (hlo, compilation_time, is_single_array) where is_single_array
-            indicates whether the output is a single JAX array (vs tuple/pytree).
+            A tuple (is_single_array, metadata) where is_single_array indicates
+            whether the output is a single JAX array (vs tuple/pytree), and
+            metadata is a dict with keys: compilation_time,
+            generated_code_size, temp_size, hlo.
         """
         bench_func = globals['__bench_func']
         arg_values = [globals[name] for name in param_names]
@@ -263,13 +264,23 @@ class Benchmark:
                 f'Warning: the lowering or compilation of the JAX jitted function failed: {exc}',
                 file=sys.stderr,
             )
-            compilation_time = None
-            hlo = None
+            metadata: dict[str, ValidBenchmarkType] = {
+                'compilation_time': None,
+                'generated_code_size': None,
+                'temp_size': None,
+                'hlo': None,
+            }
             is_single_array = False
         else:
-            hlo = compiled.as_text()
+            memory = compiled.memory_analysis()
+            metadata = {
+                'compilation_time': compilation_time,
+                'generated_code_size': memory.generated_code_size_in_bytes,
+                'temp_size': memory.temp_size_in_bytes,
+                'hlo': compiled.as_text(),
+            }
             is_single_array = lowered.out_tree.num_leaves == 1
-        return hlo, compilation_time, is_single_array
+        return is_single_array, metadata
 
     def _run_many_times(
         self, func: Callable[[], object] | str, first_time: float, globals: dict[str, Any] | None
@@ -342,6 +353,8 @@ class Benchmark:
         if 'hlo' in self._report[0]:
             schema = {
                 'compilation_time': pl.Float64(),
+                'generated_code_size': pl.Int64(),
+                'temp_size': pl.Int64(),
                 'hlo': pl.String(),
             }
         else:
@@ -358,10 +371,13 @@ class Benchmark:
             'compilation_time',
             'mad',
             'hlo',
+            'temp_size',
+            'generated_code_size',
         ]
-        extra_columns = [
+        time_columns = [
             col for col in ('first_execution_time', 'compilation_time') if col in df.columns
         ]
+        byte_columns = [col for col in ('generated_code_size', 'temp_size') if col in df.columns]
 
         if not self._report:
             return df.select(
@@ -379,7 +395,8 @@ class Benchmark:
             pl.exclude(excluded_columns),
             to_units(pl.col('median_execution_time').name.suffix(suffix), units),
             (1.4826 * pl.col('mad') / pl.col('median_execution_time') * 100).alias('± (%)'),
-            to_units(pl.col(extra_columns).name.suffix(suffix), units),
+            to_units(pl.col(time_columns).name.suffix(suffix), units),
+            pl.col(byte_columns).name.suffix(' (B)'),
         ).with_row_index('')
         return df
 
