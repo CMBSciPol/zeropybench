@@ -169,6 +169,34 @@ nvidia-smi -q -d PERFORMANCE
 watch -n 1 nvidia-smi
 ```
 
+## XLA GPU Autotuning
+
+When benchmarking JAX code on GPU, XLA may spend a prohibitive time autotuning kernels (matrix multiplications, convolutions, etc.) during compilation.
+This autotuning overhead happens for every compilation, so when comparing methods where only some benefit from autotuning, the compilation times may not be comparable.
+
+The autotune level maps to the `--xla_gpu_autotune_level` XLA flag:
+- **0**: No autotuning. Fastest compilation, may use suboptimal kernels.
+- **1–4**: Increasing autotuning effort. Higher levels try more algorithm variants, increasing compilation time but potentially finding faster kernels.
+
+:::{important}
+XLA reads the `XLA_FLAGS` environment variable **once**, when the JAX backend is initialized (typically at the first JAX operation).
+Changing it at runtime has no effect. It must be set **before importing JAX**:
+:::
+
+```python
+import os
+os.environ['XLA_FLAGS'] = '--xla_gpu_autotune_level=0'
+
+import jax  # backend initialization reads XLA_FLAGS here
+```
+
+Or from the shell:
+
+```bash
+XLA_FLAGS=--xla_gpu_autotune_level=0 python benchmark.py
+```
+
+
 ## Environment Variables
 
 ### JAX-specific
