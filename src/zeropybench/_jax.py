@@ -1,4 +1,6 @@
 import ast
+import builtins
+import inspect
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -83,6 +85,17 @@ class CodeASTParser:
                 a = x + y
                 b = a * 2
                 return a, b
+
+        Bare expressions (without assignment) are converted into ``__exprN``
+        assignments, unless they are calls to functions known to return ``None``
+        (e.g., ``print``), which are left as-is.
+        For example, ``a + 1; a + 2`` becomes::
+
+            @jax.jit
+            def __bench_func(a):
+                __expr1 = a + 1
+                __expr2 = a + 2
+                return (__expr1, __expr2)
 
         Returns:
             A tuple ``(setup_code, args, new_globals)`` where ``setup_code`` is the
@@ -174,7 +187,10 @@ class CodeASTParser:
 
         The function takes the used variables as arguments and returns a tuple
         of all variables created in the code scope, so that ``block_until_ready``
-        can be called on each of them.
+        can be called on each of them. A single bare expression is returned
+        directly. Multiple bare expressions are converted into ``__exprN``
+        assignments before building the return statement. Calls to functions
+        known to return ``None`` are left as-is.
 
         Returns:
             A tuple ``(func, source)`` where ``func`` is the created function
@@ -182,25 +198,56 @@ class CodeASTParser:
         """
         body = list(self.tree.body)
 
-        # Collect all assigned variable names
+        # Collect all user-assigned variable names (excludes _ prefixed)
         assigned_names = self._collect_assigned_names()
 
-        # Build return value
-        return_value: ast.expr
-        if len(assigned_names) == 1:
-            # Single assigned variable: return it directly
-            return_value = ast.Name(id=next(iter(assigned_names)), ctx=ast.Load())
-            body.append(ast.Return(value=return_value))
-        elif len(assigned_names) > 1:
-            # Multiple assigned variables: return tuple
-            return_value = ast.Tuple(
-                elts=[ast.Name(id=name, ctx=ast.Load()) for name in sorted(assigned_names)],
-                ctx=ast.Load(),
-            )
-            body.append(ast.Return(value=return_value))
-        elif len(self.tree.body) == 1 and isinstance(self.tree.body[0], ast.Expr):
-            # Single expression without assignment: return its value
-            body = [ast.Return(value=self.tree.body[0].value)]
+        # Identify bare expressions that are not None-returning calls
+        bare_exprs = [
+            stmt
+            for stmt in body
+            if isinstance(stmt, ast.Expr) and not self._returns_none(stmt.value)
+        ]
+
+        # If there is a single bare expression and no assigned variables,
+        # return the expression directly without an intermediate assignment.
+        if len(bare_exprs) == 1 and not assigned_names:
+            target = bare_exprs[0]
+            body = [stmt if stmt is not target else ast.Return(value=target.value) for stmt in body]
+        else:
+            # Convert bare expressions into assignments: __expr1 = ..., __expr2 = ...
+            expr_names: list[str] = []
+            expr_count = 0
+            rewritten: list[ast.stmt] = []
+            for stmt in body:
+                if isinstance(stmt, ast.Expr) and not self._returns_none(stmt.value):
+                    expr_count += 1
+                    name = f'__expr{expr_count}'
+                    expr_names.append(name)
+                    rewritten.append(
+                        ast.Assign(
+                            targets=[ast.Name(id=name, ctx=ast.Store())],
+                            value=stmt.value,
+                        )
+                    )
+                else:
+                    rewritten.append(stmt)
+            body = rewritten
+
+            # All names to return: user-assigned (sorted) + expression results (in order)
+            return_names = sorted(assigned_names) + expr_names
+
+            # Build return statement
+            if len(return_names) == 1:
+                body.append(ast.Return(value=ast.Name(id=return_names[0], ctx=ast.Load())))
+            elif len(return_names) > 1:
+                body.append(
+                    ast.Return(
+                        value=ast.Tuple(
+                            elts=[ast.Name(id=n, ctx=ast.Load()) for n in return_names],
+                            ctx=ast.Load(),
+                        )
+                    )
+                )
 
         # Create function def: def __bench_func(x, y, ...): <body>
         func_def = ast.FunctionDef(
@@ -226,6 +273,49 @@ class CodeASTParser:
         source = '@jax.jit\n' + ast.unparse(func_def)
 
         return combined['__bench_func'], source
+
+    def _returns_none(self, expr: ast.expr) -> bool:
+        """Check if an expression is a call to a function known to return None.
+
+        Detects:
+        - Builtins known to return None (e.g., ``print``)
+        - Functions/methods with a ``-> None`` return annotation
+        """
+        _NONE_BUILTINS = {print}
+
+        if not isinstance(expr, ast.Call):
+            return False
+
+        func = self._resolve_callable(expr.func)
+        if func is None:
+            return False
+
+        if func in _NONE_BUILTINS:
+            return True
+
+        try:
+            sig = inspect.signature(func)
+        except (ValueError, TypeError):
+            return False
+
+        return sig.return_annotation is None
+
+    def _resolve_callable(self, node: ast.expr) -> Any | None:
+        """Resolve an AST function node to the actual callable from globals/builtins.
+
+        Supports ``ast.Name`` (``func``) and ``ast.Attribute`` (``obj.method``).
+        Returns ``None`` if the callable cannot be resolved.
+        """
+        if isinstance(node, ast.Name):
+            result = self.globals.get(node.id)
+            if result is None:
+                result = getattr(builtins, node.id, None)
+            return result
+        if isinstance(node, ast.Attribute):
+            obj = self._resolve_callable(node.value)
+            if obj is not None:
+                return getattr(obj, node.attr, None)
+        return None
 
     def _collect_used_names(self) -> set[str]:
         """Collect variable names used in the AST.

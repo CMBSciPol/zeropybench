@@ -166,6 +166,26 @@ def test_expr(code: str) -> None:
     assert_array_equal(__bench_func(x, y), jnp.array([[4, 5], [5, 6]]))
 
 
+def test_multiple_expressions() -> None:
+    """Test multiple bare expressions."""
+    a = jnp.array([1, 2])
+    code = 'a + 1\na + 2'
+    globals_ = {'a': a}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    assert '@jax.jit' in setup_code
+    assert 'def __bench_func(a):' in setup_code
+    assert '__expr1 = a + 1' in setup_code
+    assert '__expr2 = a + 2' in setup_code
+    assert 'return (__expr1, __expr2)' in setup_code
+    __bench_func = globals_['__bench_func']
+    result = __bench_func(a)
+    assert isinstance(result, tuple)
+    assert len(result) == 2
+    assert_array_equal(result[0], jnp.array([2, 3]))
+    assert_array_equal(result[1], jnp.array([3, 4]))
+
+
 def test_subscript_call() -> None:
     """Test that subscript call funcs[0](x) is wrapped (not a simple call)."""
     x = jnp.array([1, 2])
@@ -494,3 +514,59 @@ def test_benchmark_jax_error(capsys: pytest.CaptureFixture[str]) -> None:
     df = bench.to_dataframe()
     assert df.schema['compilation_time'] == pl.Float64
     assert df.schema['hlo'] == pl.String
+
+
+def test_expression_returning_none() -> None:
+    """Test that bare expressions known to return None are not assigned."""
+    a = jnp.array([1, 2])
+
+    def side_effect(x) -> None:
+        pass
+
+    code = 'side_effect(a)\na + 1'
+    globals_ = {'a': a, 'side_effect': side_effect}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    assert 'side_effect(a)' in setup_code
+    assert 'return a + 1' in setup_code
+    # side_effect should NOT be assigned
+    assert '__expr' not in setup_code
+
+
+def test_expression_returning_none_print() -> None:
+    """Test that print() is recognized as returning None (via builtins)."""
+    a = jnp.array([1, 2])
+    code = 'print(a)\na + 1'
+    globals_ = {'a': a}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    assert 'print(a)' in setup_code
+    assert 'return a + 1' in setup_code
+
+
+def test_expression_unintrospectable_builtin() -> None:
+    """Test that builtins without a signature (e.g., max) are not skipped."""
+    a = jnp.array([1, 2])
+    code = 'max(a, a)\na + 1'
+    globals_ = {'a': a, 'max': max}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    assert '__expr1 = max(a, a)' in setup_code
+    assert '__expr2 = a + 1' in setup_code
+
+
+def test_expression_returning_none_method() -> None:
+    """Test that obj.method() with -> None annotation is not assigned."""
+    a = jnp.array([1, 2])
+
+    class Obj:
+        def log(self, x) -> None:
+            pass
+
+    obj = Obj()
+    code = 'obj.log(a)\na + 1'
+    globals_ = {'a': a, 'obj': obj}
+    parser = CodeASTParser.from_code(code, globals_)
+    setup_code, args, globals_ = parser.transform_jax_code()
+    assert 'obj.log(a)' in setup_code
+    assert 'return a + 1' in setup_code
