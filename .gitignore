@@ -4,6 +4,7 @@
 /build/
 /dist/
 /docs/build/
+/docs/source/user-guide/results.*
 
 .ipynb_checkpoints/
 __pycache__/
