@@ -9,13 +9,9 @@ cd zeropybench
 ```
 
 2. Install in development mode:
-```bash
-pip install --group dev -e .
-or
-uv sync
-```
 
 The dependency groups `cuda12` and `cuda13` can be used to quickly install JAX with cuda support:
+
 ```bash
 pip install --group dev --group cuda13 -e .
 or
@@ -96,39 +92,41 @@ The documentation uses:
 
 ```
 zeropybench/
-├── src/zeropybench/        # Main package
-│   ├── __init__.py            # Public API exports
-│   ├── _benchmark.py          # Benchmark class
-│   ├── _io.py                 # Read / write utilities
-│   ├── _jax.py                # JAX code transformation utilities
-│   ├── _plot.py               # Plotting utilities
-│   └── _units.py              # Unit conversion utilities
-├── tests/                  # Unit test suite
-├── docs/                   # Documentation
+├── src/zeropybench/         # Main package
+│   ├── __init__.py             # Public API exports
+│   ├── _benchmark.py           # Benchmark class
+│   ├── _io.py                  # Read / write utilities
+│   ├── _jax.py                 # JAX code transformation utilities
+│   ├── _plot.py                # Plotting utilities
+│   └── _units.py               # Unit conversion utilities
+├── tests/                   # Unit test suite
+├── docs/                    # Documentation
 │   └── source/
-│       ├── user-guide/        # User guide and examples
-│       ├── api/               # API reference
-│       └── developer-guide.md # This file
-├── .github/                # CI/CD workflows
-├── .pre-commit-config.yaml # Pre-commit hook configuration
-└── pyproject.toml          # Project configuration
+│       ├── _static/            # Logo and CSS file
+│       ├── user-guide/         # User guide and notebook examples
+│       ├── developer-guide.md  # This file
+│       └── reference-guide.md  # API reference
+├── .github/                 # CI/CD workflows
+├── .pre-commit-config.yaml  # Pre-commit hook configuration
+└── pyproject.toml           # Project configuration
 ```
 
 ## Contributing
 
 1. Fork the repository
 2. Install pre-commit
-3. Create a feature branch: `git checkout -b feature-name`
+3. Create a feature branch: `git switch -c feature-name`
 4. Make your changes
 5. Add tests for new functionality
-6. Ensure all tests pass: `pytest`
-7. Submit a pull request
+6. Add documentation for new functionality
+7. Ensure all tests pass: `pytest`
+8. Submit a pull request
 
 ## Release Process
 
 Releases are automated through GitHub Actions:
 
-1. Create a new tag: `git tag v0.x.x`
-2. Push the tag: `git push origin v0.x.x`
+1. Create a new tag: `git tag v1.x.x`
+2. Push the tag: `git push origin v1.x.x`
 3. Create a GitHub release
 4. The CI will automatically build and publish to PyPI
