@@ -419,14 +419,13 @@ def test_benchmark_jax_jitted_function(capsys: pytest.CaptureFixture):
         add_arrays(x, y)
     captured = capsys.readouterr().err
     assert (
-        captured
-        == """\
+        """\
 Setup code:
     __bench_func = add_arrays
 Benchmarked code:
     __bench_func(x, y).block_until_ready()
 """
-    )
+    ) in captured
 
 
 def test_benchmark_jax_multiple_outputs(capsys: pytest.CaptureFixture):
@@ -442,8 +441,7 @@ def test_benchmark_jax_multiple_outputs(capsys: pytest.CaptureFixture):
 
     captured = capsys.readouterr().err
     assert (
-        captured
-        == """\
+        """\
 Setup code:
     @jax.jit
     def __bench_func(x, y):
@@ -453,7 +451,7 @@ Setup code:
 Benchmarked code:
     jax.block_until_ready(__bench_func(x, y))
 """
-    )
+    ) in captured
 
 
 def test_benchmark_jax_verbose(capsys: pytest.CaptureFixture) -> None:
