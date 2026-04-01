@@ -170,7 +170,8 @@ class Benchmark:
             message = ''
         print(
             f'{message}{median_display:.3f} {units} ± {rel_stdev:.2f}% '
-            f'(median of {self.repeat} runs, {number} loops each)'
+            f'(median of {self.repeat} runs, {number} loops each)',
+            file=sys.stderr,
         )
 
         record: dict[str, ValidBenchmarkType] = {
