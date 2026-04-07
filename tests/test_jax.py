@@ -481,11 +481,13 @@ def test_benchmark_jax_plot(tmp_path: Path) -> None:
     for n in [10, 100]:
         x = jnp.ones(n)
         y = jnp.ones(n)
-        with bench(n=n):
+        with bench(n=n, method='add'):
             x + y
+        with bench(n=n, method='mul'):
+            x * y
 
     path = tmp_path / 'results.png'
-    bench.write_plot(path)
+    bench.write_plot(path, reference='add')
     assert path.exists()
 
 

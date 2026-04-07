@@ -18,7 +18,15 @@ DEFAULT_Y = pl.col('median_execution_time').alias('Execution time')
 
 # Columns that should be excluded from legend partitioning
 EXCLUDED_COLUMNS = frozenset(
-    {'first_execution_time', 'compilation_time', 'median_execution_time', 'hlo', 'execution_times'}
+    {
+        'first_execution_time',
+        'compilation_time',
+        'median_execution_time',
+        'hlo',
+        'execution_times',
+        'generated_code_size',
+        'temp_size',
+    }
 )
 
 
