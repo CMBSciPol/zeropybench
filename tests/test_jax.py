@@ -1,3 +1,4 @@
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -570,3 +571,93 @@ def test_expression_returning_none_method() -> None:
     setup_code, args, globals_ = parser.transform_jax_code()
     assert 'obj.log(a)' in setup_code
     assert 'return a + 1' in setup_code
+
+
+def test_benchmark_jax_compilation_time_is_cold() -> None:
+    """The compilation time is not a hit of the cache filled by the user's block."""
+
+    @jax.jit
+    def slow_to_compile(x: Array) -> Array:
+        for i in range(100):
+            x = jnp.sin(x) * (i + 1.0) + jnp.cos(x)
+        return x
+
+    x = jnp.ones(10)
+    jax.clear_caches()
+    start_time = time.perf_counter()
+    slow_to_compile.lower(x).compile()
+    reference = time.perf_counter() - start_time
+
+    bench = Benchmark(repeat=1, min_duration_per_repeat=0)
+    with bench():
+        slow_to_compile(x)
+
+    assert bench[0]['compilation_time'] > 0.3 * reference
+
+
+@jax.tree_util.register_dataclass
+@dataclass
+class SingleArrayContainer:
+    value: Array
+
+
+def test_benchmark_jax_single_leaf_pytree_output() -> None:
+    """A pytree with one array leaf has no block_until_ready method."""
+
+    @jax.jit
+    def func(x: Array) -> SingleArrayContainer:
+        return SingleArrayContainer(x + 1)
+
+    x = jnp.ones(3)
+    bench = Benchmark(repeat=1, min_duration_per_repeat=0)
+    with bench():
+        func(x)
+
+    assert bench[0]['compilation_time'] is not None
+
+
+@jax.tree_util.register_dataclass
+@dataclass
+class CallableModule:
+    """An unhashable callable pytree, like an equinox module."""
+
+    weight: Array
+    name: str
+
+    def __call__(self, x: Array) -> Array:
+        return self.weight * x
+
+    def apply(self, x: Array) -> Array:
+        return self.weight + x
+
+
+@pytest.mark.parametrize(
+    'code, call',
+    [('module(x)', CallableModule.__call__), ('module.apply(x)', CallableModule.apply)],
+)
+def test_benchmark_jax_callable_pytree(code: str, call: Callable[..., Array]) -> None:
+    """The arrays of a callable pytree are arguments of the jitted function."""
+    module = CallableModule(jnp.arange(3.0), 'linear')
+    x = jnp.ones(3)
+    parser = CodeASTParser.from_code(code, {'module': module, 'x': x})
+    setup_code, args, globals_ = parser.transform_jax_code()
+
+    assert args == ['module', 'x']
+    assert '__combine(module, __static_module)' in setup_code
+    assert isinstance(globals_['module'].weight, Array)
+    assert globals_['module'].name is None
+    assert_array_equal(globals_['__bench_func'](globals_['module'], x), call(module, x))
+    # the weights are not baked into the compiled function as constants
+    module2 = CallableModule(jnp.arange(3.0) + 10, 'linear')
+    globals2 = CodeASTParser.from_code(code, {'module': module2, 'x': x}).transform_jax_code()[2]
+    assert_array_equal(globals_['__bench_func'](globals2['module'], x), call(module2, x))
+
+
+def test_benchmark_jax_callable_pytree_end_to_end() -> None:
+    module = CallableModule(jnp.arange(3.0), 'linear')
+    x = jnp.ones(3)
+    bench = Benchmark(repeat=1, min_duration_per_repeat=0)
+    with bench():
+        module(x)
+
+    assert bench[0]['compilation_time'] is not None

@@ -248,14 +248,18 @@ class Benchmark:
 
         Returns:
             A tuple (is_single_array, metadata) where is_single_array indicates
-            whether the output is a single JAX array (vs tuple/pytree), and
+            whether the output is a bare JAX array (vs tuple/pytree), and
             metadata is a dict with keys: compilation_time,
             generated_code_size, temp_size, hlo.
         """
         bench_func = globals['__bench_func']
         arg_values = [globals[name] for name in param_names]
 
+        jax = sys.modules['jax']
         try:
+            # The user's block already compiled the function: clear the caches so that the
+            # timed compilation is a cold one. The executable is cached for the timed loop.
+            jax.clear_caches()
             start_time = time.perf_counter()
             lowered = bench_func.lower(*arg_values)
             compiled = lowered.compile()
@@ -280,7 +284,8 @@ class Benchmark:
                 'temp_size': memory.temp_size_in_bytes,
                 'hlo': compiled.as_text(),
             }
-            is_single_array = lowered.out_tree.num_leaves == 1
+            # a bare array, not a pytree with a single leaf, has a block_until_ready method
+            is_single_array = jax.tree_util.treedef_is_leaf(lowered.out_tree)
         return is_single_array, metadata
 
     def _run_many_times(

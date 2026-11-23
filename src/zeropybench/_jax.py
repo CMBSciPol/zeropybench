@@ -13,6 +13,14 @@ else:
 __all__ = ['CodeASTParser']
 
 
+def _combine(dynamic: Any, static: Any) -> Any:
+    """Inverse of the partition done by ``CodeASTParser._partition_args``."""
+    jax = sys.modules['jax']
+    return jax.tree.map(
+        lambda d, s: s if d is None else d, dynamic, static, is_leaf=lambda v: v is None
+    )
+
+
 class CodeASTParser:
     """Parse and transform code for JAX benchmarking."""
 
@@ -74,6 +82,8 @@ class CodeASTParser:
 
         For a function call ``func(x, y)``, ``__bench_func`` is set to ``jax.jit(func)``
         if ``func`` is not already jitted, or to ``func`` directly otherwise.
+        A callable object containing JAX arrays (e.g. an equinox module) is instead passed
+        as an argument of a wrapping jitted function, its non-array leaves being static.
 
         For compound or multiple statements, ``__bench_func`` returns a tuple of all
         assigned variables (excluding those starting with ``_``) so that
@@ -105,7 +115,7 @@ class CodeASTParser:
 
         jax = sys.modules['jax']
 
-        if self._is_simple_call():
+        if self._is_simple_call() and self._is_reusable_callee(jax):
             # Check if it's a simple call, in which case the function is reused and jitted if needed
             stmt = self.tree.body[0]
             expr = stmt.value  # type: ignore[attr-defined]
@@ -120,7 +130,8 @@ class CodeASTParser:
         else:
             # Wrap the benchmarked code inside a jitted function
             args = sorted(self._collect_used_names())
-            bench_func, setup_code = self._create_bench_func(args, self.globals)
+            partitioned = self._partition_args(args, jax)
+            bench_func, setup_code = self._create_bench_func(args, partitioned, self.globals)
             bench_func = jax.jit(bench_func)
 
         new_globals = self.globals | {
@@ -157,6 +168,45 @@ class CodeASTParser:
             return False
         return True
 
+    def _is_reusable_callee(self, jax: Any) -> bool:
+        """Check if the callee of a simple call can be jitted as is.
+
+        Jitting a callable object hashes it and turns its arrays into compile-time constants,
+        so only plain functions, and methods of objects without JAX arrays, are reused.
+        """
+        func, _ = self._get_func_from_call(self.tree.body[0].value)  # type: ignore[attr-defined]
+        if self.is_jitted(func) or inspect.isfunction(func):
+            return True
+        return inspect.ismethod(func) and not self._contains_jax_arrays(func.__self__, jax)
+
+    def _partition_args(self, args: list[str], jax: Any) -> list[str]:
+        """Split the pytree arguments with non-array leaves into arrays and static parts.
+
+        Only the JAX arrays can be arguments of the jitted function. The other leaves (strings,
+        functions, Python scalars...) are stored in ``__static_<name>`` and recombined with
+        the arrays inside the jitted function, like ``equinox.filter_jit`` does.
+
+        Returns:
+            The names of the partitioned arguments.
+        """
+        partitioned = [
+            name
+            for name in args
+            if self._contains_jax_arrays(self.globals[name], jax)
+            and not all(isinstance(leaf, jax.Array) for leaf in jax.tree.leaves(self.globals[name]))
+        ]
+        for name in partitioned:
+            value = self.globals[name]
+            self.globals[name] = jax.tree.map(
+                lambda v: v if isinstance(v, jax.Array) else None, value
+            )
+            self.globals[f'__static_{name}'] = jax.tree.map(
+                lambda v: None if isinstance(v, jax.Array) else v, value
+            )
+        if partitioned:
+            self.globals['__combine'] = _combine
+        return partitioned
+
     def _get_func_from_call(self, expr: ast.Call) -> tuple[Callable[..., Any], str]:
         """Extract function and its string representation from a Call node.
 
@@ -182,7 +232,9 @@ class CodeASTParser:
         """Returns ``True`` if ``func`` is jitted."""
         return callable(func) and hasattr(func, 'lower')
 
-    def _create_bench_func(self, args: list[str], combined: dict[str, Any]) -> tuple[Any, str]:
+    def _create_bench_func(
+        self, args: list[str], partitioned: list[str], combined: dict[str, Any]
+    ) -> tuple[Any, str]:
         """Create a function from the tree body.
 
         The function takes the used variables as arguments and returns a tuple
@@ -249,6 +301,12 @@ class CodeASTParser:
                     )
                 )
 
+        # Recombine the arrays with the static parts of the partitioned arguments
+        body = [
+            ast.parse(f'{name} = __combine({name}, __static_{name})').body[0]
+            for name in partitioned
+        ] + body
+
         # Create function def: def __bench_func(x, y, ...): <body>
         func_def = ast.FunctionDef(
             name='__bench_func',
@@ -281,8 +339,6 @@ class CodeASTParser:
         - Builtins known to return None (e.g., ``print``)
         - Functions/methods with a ``-> None`` return annotation
         """
-        _NONE_BUILTINS = {print}
-
         if not isinstance(expr, ast.Call):
             return False
 
@@ -290,7 +346,7 @@ class CodeASTParser:
         if func is None:
             return False
 
-        if func in _NONE_BUILTINS:
+        if func is print:  # identity check: a set lookup fails on unhashable callables
             return True
 
         try:
@@ -331,8 +387,11 @@ class CodeASTParser:
             name
             for name in loaded_names - assigned_names
             if name in self.globals
-            and not callable(self.globals[name])
             and not isinstance(self.globals[name], ModuleType)
+            and (
+                not callable(self.globals[name])
+                or self._contains_jax_arrays(self.globals[name], sys.modules['jax'])
+            )
         }
 
     def _collect_loaded_names(self) -> set[str]:

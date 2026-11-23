@@ -97,7 +97,7 @@ When JAX code is detected, ZeroPyBench:
 
 The benchmark report includes additional fields for JAX:
 - `first_execution_time`: Time of the initial (possibly uncompiled) execution
-- `compilation_time`: Time to lower and compile the function
+- `compilation_time`: Time to lower and compile the function, with JAX caches cleared
 - `generated_code_size`: Total size of the generated machine code in bytes, including embedded constants
 - `temp_size`: Size of the preallocated temporary buffer arena in bytes, excluding input arguments, outputs, and constants
 - `hlo`: The StableHLO text representation of the compiled computation
