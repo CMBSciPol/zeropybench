@@ -312,7 +312,7 @@ class BenchmarkPlotter:
     def _in_notebook() -> bool:
         """Return True if running inside a Jupyter notebook."""
         try:
-            from IPython import get_ipython  # type: ignore[attr-defined]
+            from IPython import get_ipython
         except ImportError:
             return False
 
